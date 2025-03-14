@@ -41,7 +41,7 @@ const PanicModeButton = () => {
       });
       
       if (!isPanicMode) {
-        // Activate panic mode - turn off devices, unlock doors
+        // Activate panic mode - turn on door locks, turn off all other devices
         // Get all devices
         const devicesRef = collection(db, "devices");
         const devicesSnapshot = await getDocs(devicesRef);
@@ -53,9 +53,9 @@ const PanicModeButton = () => {
           const deviceRef = doc(db, "devices", deviceDoc.id);
           const deviceData = deviceDoc.data();
           
-          // Turn off everything except door locks
+          // Turn on door locks (unlock them), turn off everything else
           if (deviceData.device_category === "Door Lock") {
-            batch.update(deviceRef, { device_status: "OFF" }); // Unlock doors
+            batch.update(deviceRef, { device_status: "ON" }); // Door locks ON = unlocked
           } else {
             batch.update(deviceRef, { device_status: "OFF" }); // Turn off other devices
           }
