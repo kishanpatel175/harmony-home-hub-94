@@ -16,12 +16,14 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface MemberAssignmentsProps {
   member: Member;
+  onUpdate?: () => void;
 }
 
-const MemberAssignments: React.FC<MemberAssignmentsProps> = ({ member }) => {
+const MemberAssignments: React.FC<MemberAssignmentsProps> = ({ member, onUpdate }) => {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(false);
+  const [localMember, setLocalMember] = useState<Member>(member);
   
   // Fetch all rooms and devices
   useEffect(() => {
@@ -56,7 +58,9 @@ const MemberAssignments: React.FC<MemberAssignmentsProps> = ({ member }) => {
     };
     
     fetchRoomsAndDevices();
-  }, []);
+    // Update local member state when the member prop changes
+    setLocalMember(member);
+  }, [member]);
   
   const toggleRoomAssignment = async (roomId: string, isAssigned: boolean) => {
     try {
@@ -67,13 +71,32 @@ const MemberAssignments: React.FC<MemberAssignmentsProps> = ({ member }) => {
         await updateDoc(memberRef, {
           assignedRooms: arrayRemove(roomId)
         });
+        
+        // Update local state immediately
+        setLocalMember(prev => ({
+          ...prev,
+          assignedRooms: prev.assignedRooms.filter(id => id !== roomId)
+        }));
+        
         toast.success("Room unassigned from member");
       } else {
         // Add room to member's assignments
         await updateDoc(memberRef, {
           assignedRooms: arrayUnion(roomId)
         });
+        
+        // Update local state immediately
+        setLocalMember(prev => ({
+          ...prev,
+          assignedRooms: [...prev.assignedRooms, roomId]
+        }));
+        
         toast.success("Room assigned to member");
+      }
+      
+      // Notify parent component of updates
+      if (onUpdate) {
+        onUpdate();
       }
     } catch (error) {
       console.error("Error toggling room assignment:", error);
@@ -97,6 +120,12 @@ const MemberAssignments: React.FC<MemberAssignmentsProps> = ({ member }) => {
           assignedMembers: arrayRemove(member.memberId)
         });
         
+        // Update local state immediately
+        setLocalMember(prev => ({
+          ...prev,
+          assignedDevices: prev.assignedDevices.filter(id => id !== deviceId)
+        }));
+        
         toast.success("Device unassigned from member");
       } else {
         // Add device to member's assignments
@@ -109,7 +138,18 @@ const MemberAssignments: React.FC<MemberAssignmentsProps> = ({ member }) => {
           assignedMembers: arrayUnion(member.memberId)
         });
         
+        // Update local state immediately
+        setLocalMember(prev => ({
+          ...prev,
+          assignedDevices: [...prev.assignedDevices, deviceId]
+        }));
+        
         toast.success("Device assigned to member");
+      }
+      
+      // Notify parent component of updates
+      if (onUpdate) {
+        onUpdate();
       }
     } catch (error) {
       console.error("Error toggling device assignment:", error);
@@ -155,7 +195,7 @@ const MemberAssignments: React.FC<MemberAssignmentsProps> = ({ member }) => {
                     <p className="text-sm text-muted-foreground">No rooms available</p>
                   ) : (
                     rooms.map((room) => {
-                      const isAssigned = member.assignedRooms.includes(room.roomId);
+                      const isAssigned = localMember.assignedRooms.includes(room.roomId);
                       return (
                         <div 
                           key={room.roomId} 
@@ -198,7 +238,7 @@ const MemberAssignments: React.FC<MemberAssignmentsProps> = ({ member }) => {
                     <p className="text-sm text-muted-foreground">No devices available</p>
                   ) : (
                     devices.map((device) => {
-                      const isAssigned = member.assignedDevices.includes(device.deviceId);
+                      const isAssigned = localMember.assignedDevices.includes(device.deviceId);
                       const roomInfo = rooms.find(r => r.roomId === device.roomId);
                       
                       return (

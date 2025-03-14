@@ -101,7 +101,7 @@ const MemberItem: React.FC<MemberItemProps> = ({
             )}
           </div>
           
-          <MemberAssignments member={member} />
+          <MemberAssignments member={member} onUpdate={onUpdate} />
         </div>
       </div>
     </div>
