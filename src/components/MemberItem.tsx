@@ -6,17 +6,20 @@ import { db } from "@/lib/firebase";
 import { collection, query, where, orderBy, limit, getDocs } from "firebase/firestore";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import MemberAssignments from "./MemberAssignments";
 
 interface MemberItemProps {
   member: Member;
   isInside?: boolean;
   isPrivileged?: boolean;
+  onUpdate?: () => void;
 }
 
 const MemberItem: React.FC<MemberItemProps> = ({ 
   member, 
   isInside = false,
-  isPrivileged = false 
+  isPrivileged = false,
+  onUpdate
 }) => {
   const [assignedRoomsCount, setAssignedRoomsCount] = useState<number>(0);
   const [assignedDevicesCount, setAssignedDevicesCount] = useState<number>(0);
@@ -97,6 +100,8 @@ const MemberItem: React.FC<MemberItemProps> = ({
               </Badge>
             )}
           </div>
+          
+          <MemberAssignments member={member} />
         </div>
       </div>
     </div>

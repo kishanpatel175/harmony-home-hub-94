@@ -36,6 +36,7 @@ const MembersPage = () => {
   const [loading, setLoading] = useState(true);
   const [membersInside, setMembersInside] = useState<string[]>([]);
   const [privilegedUserId, setPrivilegedUserId] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // New member form
   const [isAddingMember, setIsAddingMember] = useState(false);
@@ -120,7 +121,7 @@ const MembersPage = () => {
     return () => {
       unsubscribePrivileged();
     };
-  }, []);
+  }, [refreshKey]);
   
   const addMember = async () => {
     if (!newMemberName.trim()) {
@@ -163,6 +164,11 @@ const MembersPage = () => {
     } finally {
       setIsAddingMember(false);
     }
+  };
+
+  // Function to refresh the members list
+  const handleMemberUpdate = () => {
+    setRefreshKey(prev => prev + 1);
   };
 
   return (
@@ -324,6 +330,7 @@ const MembersPage = () => {
               member={member} 
               isInside={membersInside.includes(member.memberId)}
               isPrivileged={member.memberId === privilegedUserId}
+              onUpdate={handleMemberUpdate}
             />
           ))}
         </div>
