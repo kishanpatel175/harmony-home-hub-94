@@ -3,14 +3,14 @@ import { useState, useEffect } from "react";
 import { Room, Device, Member } from "@/lib/types";
 import { db } from "@/lib/firebase";
 import { 
-  collection, query, getDocs, doc, updateDoc, arrayUnion, arrayRemove 
+  collection, query, getDocs, doc, updateDoc, arrayUnion, arrayRemove, writeBatch
 } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { 
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger 
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
-import { Check, Home, Tv, X } from "lucide-react";
+import { Check, Home, Tv, X, Save } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -24,6 +24,19 @@ const MemberAssignments: React.FC<MemberAssignmentsProps> = ({ member, onUpdate 
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(false);
   const [localMember, setLocalMember] = useState<Member>(member);
+  const [pendingChanges, setPendingChanges] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  
+  // Track changes for rooms and devices
+  const [roomChanges, setRoomChanges] = useState<{
+    add: string[];
+    remove: string[];
+  }>({ add: [], remove: [] });
+  
+  const [deviceChanges, setDeviceChanges] = useState<{
+    add: string[];
+    remove: string[];
+  }>({ add: [], remove: [] });
   
   // Fetch all rooms and devices
   useEffect(() => {
@@ -60,100 +73,145 @@ const MemberAssignments: React.FC<MemberAssignmentsProps> = ({ member, onUpdate 
     fetchRoomsAndDevices();
     // Update local member state when the member prop changes
     setLocalMember(member);
+    // Reset changes when member changes
+    setRoomChanges({ add: [], remove: [] });
+    setDeviceChanges({ add: [], remove: [] });
+    setPendingChanges(false);
   }, [member]);
   
-  const toggleRoomAssignment = async (roomId: string, isAssigned: boolean) => {
+  const toggleRoomAssignment = (roomId: string, isAssigned: boolean) => {
     try {
-      const memberRef = doc(db, "members", member.memberId);
-      
       if (isAssigned) {
-        // Remove room from member's assignments
-        await updateDoc(memberRef, {
-          assignedRooms: arrayRemove(roomId)
-        });
+        // Mark to remove room from member's assignments
+        setRoomChanges(prev => ({
+          add: prev.add.filter(id => id !== roomId),
+          remove: [...prev.remove.filter(id => id !== roomId), roomId]
+        }));
         
-        // Update local state immediately
+        // Update local state immediately for UI feedback
         setLocalMember(prev => ({
           ...prev,
           assignedRooms: prev.assignedRooms.filter(id => id !== roomId)
         }));
-        
-        toast.success("Room unassigned from member");
       } else {
-        // Add room to member's assignments
-        await updateDoc(memberRef, {
-          assignedRooms: arrayUnion(roomId)
-        });
+        // Mark to add room to member's assignments
+        setRoomChanges(prev => ({
+          remove: prev.remove.filter(id => id !== roomId),
+          add: [...prev.add.filter(id => id !== roomId), roomId]
+        }));
         
-        // Update local state immediately
+        // Update local state immediately for UI feedback
         setLocalMember(prev => ({
           ...prev,
           assignedRooms: [...prev.assignedRooms, roomId]
         }));
-        
-        toast.success("Room assigned to member");
       }
       
-      // Notify parent component of updates
-      if (onUpdate) {
-        onUpdate();
-      }
+      setPendingChanges(true);
     } catch (error) {
       console.error("Error toggling room assignment:", error);
       toast.error("Failed to update room assignment");
     }
   };
   
-  const toggleDeviceAssignment = async (deviceId: string, isAssigned: boolean) => {
+  const toggleDeviceAssignment = (deviceId: string, isAssigned: boolean) => {
     try {
-      const memberRef = doc(db, "members", member.memberId);
-      const deviceRef = doc(db, "devices", deviceId);
-      
       if (isAssigned) {
-        // Remove device from member's assignments
-        await updateDoc(memberRef, {
-          assignedDevices: arrayRemove(deviceId)
-        });
+        // Mark to remove device from member's assignments
+        setDeviceChanges(prev => ({
+          add: prev.add.filter(id => id !== deviceId),
+          remove: [...prev.remove.filter(id => id !== deviceId), deviceId]
+        }));
         
-        // Remove member from device's assigned members
-        await updateDoc(deviceRef, {
-          assignedMembers: arrayRemove(member.memberId)
-        });
-        
-        // Update local state immediately
+        // Update local state immediately for UI feedback
         setLocalMember(prev => ({
           ...prev,
           assignedDevices: prev.assignedDevices.filter(id => id !== deviceId)
         }));
-        
-        toast.success("Device unassigned from member");
       } else {
-        // Add device to member's assignments
-        await updateDoc(memberRef, {
-          assignedDevices: arrayUnion(deviceId)
-        });
+        // Mark to add device to member's assignments
+        setDeviceChanges(prev => ({
+          remove: prev.remove.filter(id => id !== deviceId),
+          add: [...prev.add.filter(id => id !== deviceId), deviceId]
+        }));
         
-        // Add member to device's assigned members
-        await updateDoc(deviceRef, {
-          assignedMembers: arrayUnion(member.memberId)
-        });
-        
-        // Update local state immediately
+        // Update local state immediately for UI feedback
         setLocalMember(prev => ({
           ...prev,
           assignedDevices: [...prev.assignedDevices, deviceId]
         }));
-        
-        toast.success("Device assigned to member");
       }
+      
+      setPendingChanges(true);
+    } catch (error) {
+      console.error("Error toggling device assignment:", error);
+      toast.error("Failed to update device assignment");
+    }
+  };
+  
+  const submitChanges = async () => {
+    try {
+      setIsSubmitting(true);
+      const batch = writeBatch(db);
+      const memberRef = doc(db, "members", member.memberId);
+      
+      // Process room changes
+      if (roomChanges.add.length > 0 || roomChanges.remove.length > 0) {
+        const updatedRooms = [
+          ...member.assignedRooms.filter(roomId => !roomChanges.remove.includes(roomId)),
+          ...roomChanges.add.filter(roomId => !member.assignedRooms.includes(roomId))
+        ];
+        
+        batch.update(memberRef, {
+          assignedRooms: updatedRooms
+        });
+      }
+      
+      // Process device changes
+      if (deviceChanges.add.length > 0 || deviceChanges.remove.length > 0) {
+        const updatedDevices = [
+          ...member.assignedDevices.filter(deviceId => !deviceChanges.remove.includes(deviceId)),
+          ...deviceChanges.add.filter(deviceId => !member.assignedDevices.includes(deviceId))
+        ];
+        
+        batch.update(memberRef, {
+          assignedDevices: updatedDevices
+        });
+        
+        // Update the device records too
+        for (const deviceId of deviceChanges.add) {
+          const deviceRef = doc(db, "devices", deviceId);
+          batch.update(deviceRef, {
+            assignedMembers: arrayUnion(member.memberId)
+          });
+        }
+        
+        for (const deviceId of deviceChanges.remove) {
+          const deviceRef = doc(db, "devices", deviceId);
+          batch.update(deviceRef, {
+            assignedMembers: arrayRemove(member.memberId)
+          });
+        }
+      }
+      
+      await batch.commit();
+      
+      // Reset changes
+      setRoomChanges({ add: [], remove: [] });
+      setDeviceChanges({ add: [], remove: [] });
+      setPendingChanges(false);
+      
+      toast.success("Member assignments updated successfully");
       
       // Notify parent component of updates
       if (onUpdate) {
         onUpdate();
       }
     } catch (error) {
-      console.error("Error toggling device assignment:", error);
-      toast.error("Failed to update device assignment");
+      console.error("Error submitting changes:", error);
+      toast.error("Failed to update assignments");
+    } finally {
+      setIsSubmitting(false);
     }
   };
   
@@ -281,6 +339,28 @@ const MemberAssignments: React.FC<MemberAssignmentsProps> = ({ member, onUpdate 
                 </div>
               </ScrollArea>
             </div>
+            
+            {pendingChanges && (
+              <div className="flex justify-end">
+                <Button 
+                  onClick={submitChanges} 
+                  disabled={isSubmitting}
+                  className="gap-2"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <span className="animate-spin">↻</span>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      Submit Changes
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </DialogContent>
