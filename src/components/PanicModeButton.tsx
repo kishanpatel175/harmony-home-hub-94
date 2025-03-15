@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from "react";
-import { AlertTriangle, AlertCircle } from "lucide-react";
+import { AlertTriangle, AlertCircle, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { doc, updateDoc, serverTimestamp, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -89,15 +89,20 @@ const PanicModeButton = () => {
   return (
     <Button 
       variant={isPanicMode ? "outline" : "destructive"}
-      className={`w-full flex items-center justify-center gap-2 py-6 rounded-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] ${
-        isPanicMode ? "border-destructive text-destructive" : ""
+      className={`w-full flex items-center justify-center gap-2 py-6 rounded-xl transition-all duration-500 hover:scale-[1.02] active:scale-[0.98] ${
+        isPanicMode ? 
+          "border-destructive text-destructive panic-button-active" : 
+          "shadow-lg"
       }`}
       onClick={togglePanicMode}
       disabled={activating}
     >
       {isPanicMode ? (
         <>
-          <AlertCircle className="w-5 h-5" />
+          <div className="relative">
+            <AlertCircle className="w-5 h-5" />
+            <Zap className="w-3 h-3 absolute -top-1 -right-1 text-destructive animate-pulse" />
+          </div>
           <span className="font-medium">Deactivate Panic Mode</span>
         </>
       ) : (

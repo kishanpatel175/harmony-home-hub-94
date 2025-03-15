@@ -1,7 +1,7 @@
 
 import { Room, Device } from "@/lib/types";
 import { useState, useEffect, useCallback } from "react";
-import { Home, SquareDot } from "lucide-react";
+import { Home, SquareDot, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -16,6 +16,7 @@ const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
   const [activeDevices, setActiveDevices] = useState<number>(0);
   const [totalDevices, setTotalDevices] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [hasAnimated, setHasAnimated] = useState<boolean>(false);
 
   const fetchDevices = useCallback(async () => {
     try {
@@ -34,12 +35,17 @@ const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
       setTotalDevices(deviceList.length);
       const activeCount = deviceList.filter(device => device.device_status === "ON").length;
       setActiveDevices(activeCount);
+      
+      // Set animation flag when data is loaded
+      if (!hasAnimated) {
+        setHasAnimated(true);
+      }
     } catch (error) {
       console.error("Error fetching devices:", error);
     } finally {
       setIsLoading(false);
     }
-  }, [room.roomId]);
+  }, [room.roomId, hasAnimated]);
   
   useEffect(() => {
     fetchDevices();
@@ -60,17 +66,37 @@ const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
   return (
     <Link 
       to={`/room/${room.roomId}`}
-      className="block transition-standard hover:scale-[1.02] active:scale-[0.98]"
+      className={cn(
+        "block transition-standard hover:scale-[1.02] active:scale-[0.98]",
+        hasAnimated ? "animate-fade-in" : ""
+      )}
+      style={{ 
+        animationDelay: `${Math.random() * 0.5}s`
+      }}
     >
-      <div className="glass-card p-4 rounded-xl h-full">
+      <div className={cn(
+        "glass-card p-4 rounded-xl h-full", 
+        activeDevices > 0 ? "card-pulse" : ""
+      )}>
         <div className="flex flex-col h-full">
           <div className="flex justify-between items-start">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mb-3">
-              <Home className="w-5 h-5 text-primary" />
+            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mb-3 relative group">
+              <Home className="w-5 h-5 text-primary relative z-10" />
+              {activeDevices > 0 && (
+                <div className="absolute inset-0 bg-primary/20 rounded-full transform scale-0 group-hover:scale-125 transition-transform duration-300 opacity-0 group-hover:opacity-100"></div>
+              )}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {room.roomId.slice(0, 4)}
             </div>
           </div>
           
-          <h3 className="font-medium text-lg mb-2">{room.room_name}</h3>
+          <div className="flex items-center gap-2 mb-2">
+            <h3 className="font-medium text-lg">{room.room_name}</h3>
+            {activeDevices > 0 && (
+              <Sparkles className="w-4 h-4 text-primary animate-pulse" />
+            )}
+          </div>
           
           {isLoading ? (
             <div className="h-4 w-16 bg-muted animate-pulse rounded mt-auto" />

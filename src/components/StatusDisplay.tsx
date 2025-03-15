@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { collection, query, orderBy, limit, getDocs, doc, onSnapshot } from "firebase/firestore";
-import { UserRound, Home as HomeIcon } from "lucide-react";
+import { UserRound, Home as HomeIcon, Shield, Users } from "lucide-react";
 import { deviceUpdateEvent, DEVICE_UPDATE_EVENT } from "./PanicModeButton";
 
 const StatusDisplay = () => {
@@ -71,33 +71,43 @@ const StatusDisplay = () => {
 
   return (
     <div className="grid grid-cols-2 gap-4 mb-6 animate-fade-in">
-      <div className="glass-card p-4 rounded-xl">
+      <div className="glass-card p-4 rounded-xl hover:shadow-lg transition-all duration-300 group">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-            <UserRound className="w-5 h-5 text-primary" />
+          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center relative overflow-hidden group-hover:bg-primary/20 transition-all duration-300">
+            <Shield className="w-5 h-5 text-primary relative z-10" />
+            <div className="absolute inset-0 bg-primary/10 rounded-full transform scale-0 group-hover:scale-150 transition-transform duration-500"></div>
           </div>
           <div>
-            <h3 className="font-medium">Privileged User</h3>
+            <h3 className="font-medium text-gradient">Privileged User</h3>
             {loading ? (
               <div className="h-4 w-24 bg-muted animate-pulse rounded" />
             ) : (
-              <p className="text-sm text-muted-foreground">{privilegedUser} ({privilegedRole})</p>
+              <div className="flex items-center gap-1">
+                <UserRound className="w-3.5 h-3.5 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  {privilegedUser} <span className="text-xs opacity-70">({privilegedRole})</span>
+                </p>
+              </div>
             )}
           </div>
         </div>
       </div>
       
-      <div className="glass-card p-4 rounded-xl">
+      <div className="glass-card p-4 rounded-xl hover:shadow-lg transition-all duration-300 group">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-            <HomeIcon className="w-5 h-5 text-primary" />
+          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center relative overflow-hidden group-hover:bg-primary/20 transition-all duration-300">
+            <HomeIcon className="w-5 h-5 text-primary relative z-10" />
+            <div className="absolute inset-0 bg-primary/10 rounded-full transform scale-0 group-hover:scale-150 transition-transform duration-500"></div>
           </div>
           <div>
-            <h3 className="font-medium">Members at Home</h3>
+            <h3 className="font-medium text-gradient">Members at Home</h3>
             {loading ? (
               <div className="h-4 w-16 bg-muted animate-pulse rounded" />
             ) : (
-              <p className="text-sm text-muted-foreground">{membersAtHome} members</p>
+              <div className="flex items-center gap-1">
+                <Users className="w-3.5 h-3.5 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">{membersAtHome} members</p>
+              </div>
             )}
           </div>
         </div>
