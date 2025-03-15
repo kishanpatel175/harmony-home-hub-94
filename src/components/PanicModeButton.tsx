@@ -7,10 +7,12 @@ import { db } from "@/lib/firebase";
 import { toast } from "@/components/ui/sonner";
 import { collection, query, where, getDocs, writeBatch } from "firebase/firestore";
 import { PanicMode } from "@/lib/types";
+import { useNavigate } from "react-router-dom";
 
 const PanicModeButton = () => {
   const [activating, setActivating] = useState(false);
   const [isPanicMode, setIsPanicMode] = useState(false);
+  const navigate = useNavigate();
   
   useEffect(() => {
     // Listen for panic mode changes
@@ -64,9 +66,13 @@ const PanicModeButton = () => {
         await batch.commit();
         
         toast.success("Panic mode activated. All doors unlocked and devices turned off.");
+        // Force refresh the current route to update all device statuses
+        navigate(0);
       } else {
         // Deactivate panic mode
         toast.success("Panic mode deactivated.");
+        // Force refresh the current route to update all device statuses
+        navigate(0);
       }
       
     } catch (error) {

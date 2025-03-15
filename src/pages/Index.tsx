@@ -10,6 +10,7 @@ import { Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/sonner";
+import ThemeToggle from "@/components/ThemeToggle";
 import {
   Dialog,
   DialogContent,
@@ -81,14 +82,17 @@ const Index = () => {
       <header className="mb-6 animate-fade-in">
         <div className="flex justify-between items-center mb-2">
           <h1 className="text-2xl font-semibold">Smart Home Hub</h1>
-          <Button 
-            variant="ghost" 
-            size="icon"
-            onClick={() => setRefreshKey(prev => prev + 1)}
-            disabled={loading}
-          >
-            <RefreshCw className={cn("h-5 w-5", loading && "animate-spin")} />
-          </Button>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onClick={() => setRefreshKey(prev => prev + 1)}
+              disabled={loading}
+            >
+              <RefreshCw className={cn("h-5 w-5", loading && "animate-spin")} />
+            </Button>
+          </div>
         </div>
         <p className="text-muted-foreground">Manage your rooms, devices, and members</p>
       </header>

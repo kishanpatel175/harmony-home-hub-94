@@ -9,13 +9,24 @@ import NotFound from "./pages/NotFound";
 import RoomDetail from "./pages/RoomDetail";
 import MembersPage from "./pages/MembersPage";
 import Navigation from "./components/Navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { db } from "./lib/firebase";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 
 const queryClient = new QueryClient();
 
 const App = () => {
+  // Check for theme preference
+  useEffect(() => {
+    // Check localStorage for theme preference
+    const savedTheme = localStorage.getItem("theme");
+    if (savedTheme === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }, []);
+
   // Initialize Firebase collections with default values if they don't exist
   useEffect(() => {
     const initializeFirebase = async () => {
