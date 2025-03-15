@@ -1,11 +1,12 @@
 
 import { Room, Device } from "@/lib/types";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Home, SquareDot } from "lucide-react";
 import { Link } from "react-router-dom";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { cn } from "@/lib/utils";
+import { deviceUpdateEvent, DEVICE_UPDATE_EVENT } from "./PanicModeButton";
 
 interface RoomCardProps {
   room: Room;
@@ -16,7 +17,7 @@ const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
   const [totalDevices, setTotalDevices] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const fetchDevices = async () => {
+  const fetchDevices = useCallback(async () => {
     try {
       setIsLoading(true);
       const devicesQuery = query(
@@ -38,11 +39,23 @@ const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [room.roomId]);
   
   useEffect(() => {
     fetchDevices();
-  }, [room.roomId]);
+    
+    // Add event listener for device updates
+    const handleDeviceUpdate = () => {
+      console.log("Device update detected, refreshing room:", room.room_name);
+      fetchDevices();
+    };
+    
+    deviceUpdateEvent.addEventListener(DEVICE_UPDATE_EVENT, handleDeviceUpdate);
+    
+    return () => {
+      deviceUpdateEvent.removeEventListener(DEVICE_UPDATE_EVENT, handleDeviceUpdate);
+    };
+  }, [room.roomId, fetchDevices, room.room_name]);
 
   return (
     <Link 

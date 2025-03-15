@@ -8,6 +8,10 @@ import { toast } from "@/components/ui/sonner";
 import { collection, query, where, getDocs, writeBatch } from "firebase/firestore";
 import { PanicMode } from "@/lib/types";
 
+// Create a custom event for device updates
+export const deviceUpdateEvent = new EventTarget();
+export const DEVICE_UPDATE_EVENT = "device-status-updated";
+
 const PanicModeButton = () => {
   const [activating, setActivating] = useState(false);
   const [isPanicMode, setIsPanicMode] = useState(false);
@@ -63,9 +67,14 @@ const PanicModeButton = () => {
         
         await batch.commit();
         
+        // Dispatch custom event to notify components that device statuses have changed
+        deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT));
+        
         toast.success("Panic mode activated. All doors unlocked and devices turned off.");
       } else {
         // Deactivate panic mode
+        // Also dispatch the event when deactivating
+        deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT));
         toast.success("Panic mode deactivated.");
       }
       
