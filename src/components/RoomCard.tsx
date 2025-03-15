@@ -22,36 +22,40 @@ const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
   const [isTogglingAll, setIsTogglingAll] = useState<boolean>(false);
   const [allOn, setAllOn] = useState<boolean>(false);
 
+  const fetchDevices = async () => {
+    try {
+      setIsLoading(true);
+      const devicesQuery = query(
+        collection(db, "devices"),
+        where("roomId", "==", room.roomId)
+      );
+      
+      const devicesSnapshot = await getDocs(devicesQuery);
+      const deviceList = devicesSnapshot.docs.map(doc => ({
+        ...doc.data(),
+        deviceId: doc.id
+      })) as Device[];
+      
+      setDevices(deviceList);
+      setTotalDevices(deviceList.length);
+      const activeCount = deviceList.filter(device => device.device_status === "ON").length;
+      setActiveDevices(activeCount);
+      setAllOn(activeCount > 0 && activeCount === deviceList.length);
+    } catch (error) {
+      console.error("Error fetching devices:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
   useEffect(() => {
-    const fetchDevices = async () => {
-      try {
-        const devicesQuery = query(
-          collection(db, "devices"),
-          where("roomId", "==", room.roomId)
-        );
-        
-        const devicesSnapshot = await getDocs(devicesQuery);
-        const deviceList = devicesSnapshot.docs.map(doc => ({
-          ...doc.data(),
-          deviceId: doc.id
-        })) as Device[];
-        
-        setDevices(deviceList);
-        setTotalDevices(deviceList.length);
-        const activeCount = deviceList.filter(device => device.device_status === "ON").length;
-        setActiveDevices(activeCount);
-        setAllOn(activeCount > 0 && activeCount === deviceList.length);
-      } catch (error) {
-        console.error("Error fetching devices:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
     fetchDevices();
   }, [room.roomId]);
 
-  const toggleAllDevices = async () => {
+  const toggleAllDevices = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
     if (isTogglingAll || devices.length === 0) return;
     
     try {
@@ -70,7 +74,7 @@ const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
       
       await batch.commit();
       
-      // Update local state with properly typed status
+      // Update local state without waiting for a refetch
       const updatedDevices = devices.map(device => ({
         ...device,
         device_status: newStatus
@@ -81,17 +85,18 @@ const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
       setAllOn(newStatus === "ON");
       
       toast.success(`All devices in ${room.room_name} turned ${newStatus.toLowerCase()}`);
+      
+      // Refresh device data after a short delay to ensure firebase has updated
+      setTimeout(() => {
+        fetchDevices();
+      }, 500);
+      
     } catch (error) {
       console.error("Error toggling devices:", error);
       toast.error("Failed to update devices");
     } finally {
       setIsTogglingAll(false);
     }
-  };
-
-  const stopPropagation = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
   };
 
   return (
@@ -108,12 +113,14 @@ const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
             
             <Toggle
               pressed={allOn}
-              onPressedChange={toggleAllDevices}
               disabled={isTogglingAll || totalDevices === 0}
-              onClick={stopPropagation}
+              onClick={toggleAllDevices}
               variant="outline"
               size="sm"
-              className={`${isTogglingAll ? 'opacity-50' : ''}`}
+              className={cn(
+                isTogglingAll ? 'opacity-50' : '',
+                'relative z-10'
+              )}
               aria-label={`Toggle all devices in ${room.room_name}`}
             >
               <Power className={cn(
