@@ -58,7 +58,7 @@ const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
       setIsTogglingAll(true);
       
       // Determine the target state (if any devices are ON, turn all OFF; otherwise turn all ON)
-      const newStatus = allOn ? "OFF" : "ON";
+      const newStatus: "ON" | "OFF" = allOn ? "OFF" : "ON";
       
       // Use batch write to update all devices
       const batch = writeBatch(db);
@@ -70,7 +70,7 @@ const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
       
       await batch.commit();
       
-      // Update local state
+      // Update local state with properly typed status
       const updatedDevices = devices.map(device => ({
         ...device,
         device_status: newStatus
