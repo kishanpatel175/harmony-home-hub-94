@@ -10,7 +10,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger 
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
-import { Check, Home, Tv, X, Save } from "lucide-react";
+import { Check, Home, Tv, X, Save, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -81,6 +81,10 @@ const MemberAssignments: React.FC<MemberAssignmentsProps> = ({ member, onUpdate 
   
   const toggleRoomAssignment = (roomId: string, isAssigned: boolean) => {
     try {
+      // Get all devices that belong to this room
+      const roomDevices = devices.filter(device => device.roomId === roomId);
+      const roomDeviceIds = roomDevices.map(device => device.deviceId);
+      
       if (isAssigned) {
         // Mark to remove room from member's assignments
         setRoomChanges(prev => ({
@@ -88,10 +92,26 @@ const MemberAssignments: React.FC<MemberAssignmentsProps> = ({ member, onUpdate 
           remove: [...prev.remove.filter(id => id !== roomId), roomId]
         }));
         
+        // Also remove all devices in this room
+        setDeviceChanges(prev => {
+          const newAdd = prev.add.filter(id => !roomDeviceIds.includes(id));
+          const newRemove = [...prev.remove];
+          
+          // Add device IDs to remove list only if they're currently assigned
+          roomDeviceIds.forEach(deviceId => {
+            if (localMember.assignedDevices.includes(deviceId) && !newRemove.includes(deviceId)) {
+              newRemove.push(deviceId);
+            }
+          });
+          
+          return { add: newAdd, remove: newRemove };
+        });
+        
         // Update local state immediately for UI feedback
         setLocalMember(prev => ({
           ...prev,
-          assignedRooms: prev.assignedRooms.filter(id => id !== roomId)
+          assignedRooms: prev.assignedRooms.filter(id => id !== roomId),
+          assignedDevices: prev.assignedDevices.filter(id => !roomDeviceIds.includes(id))
         }));
       } else {
         // Mark to add room to member's assignments
@@ -100,11 +120,38 @@ const MemberAssignments: React.FC<MemberAssignmentsProps> = ({ member, onUpdate 
           add: [...prev.add.filter(id => id !== roomId), roomId]
         }));
         
+        // Also add all devices in this room
+        setDeviceChanges(prev => {
+          const newRemove = prev.remove.filter(id => !roomDeviceIds.includes(id));
+          const newAdd = [...prev.add];
+          
+          // Add device IDs to add list only if they're not already assigned
+          roomDeviceIds.forEach(deviceId => {
+            if (!localMember.assignedDevices.includes(deviceId) && !newAdd.includes(deviceId)) {
+              newAdd.push(deviceId);
+            }
+          });
+          
+          return { add: newAdd, remove: newRemove };
+        });
+        
         // Update local state immediately for UI feedback
-        setLocalMember(prev => ({
-          ...prev,
-          assignedRooms: [...prev.assignedRooms, roomId]
-        }));
+        setLocalMember(prev => {
+          const updatedDevices = [...prev.assignedDevices];
+          
+          // Add device IDs to the list only if they're not already assigned
+          roomDeviceIds.forEach(deviceId => {
+            if (!updatedDevices.includes(deviceId)) {
+              updatedDevices.push(deviceId);
+            }
+          });
+          
+          return {
+            ...prev,
+            assignedRooms: [...prev.assignedRooms, roomId],
+            assignedDevices: updatedDevices
+          };
+        });
       }
       
       setPendingChanges(true);
@@ -116,6 +163,10 @@ const MemberAssignments: React.FC<MemberAssignmentsProps> = ({ member, onUpdate 
   
   const toggleDeviceAssignment = (deviceId: string, isAssigned: boolean) => {
     try {
+      // Find the device and its room
+      const device = devices.find(d => d.deviceId === deviceId);
+      if (!device || !device.roomId) return;
+      
       if (isAssigned) {
         // Mark to remove device from member's assignments
         setDeviceChanges(prev => ({
@@ -128,6 +179,27 @@ const MemberAssignments: React.FC<MemberAssignmentsProps> = ({ member, onUpdate 
           ...prev,
           assignedDevices: prev.assignedDevices.filter(id => id !== deviceId)
         }));
+        
+        // Check if we need to remove room assignment too
+        // Only remove room if no other devices from this room are assigned
+        const roomDevices = devices.filter(d => d.roomId === device.roomId);
+        const roomDeviceIds = roomDevices.map(d => d.deviceId);
+        const remainingAssignedDevices = localMember.assignedDevices
+          .filter(id => id !== deviceId) // Remove current device
+          .filter(id => roomDeviceIds.includes(id)); // Keep only devices from the same room
+        
+        if (remainingAssignedDevices.length === 0 && localMember.assignedRooms.includes(device.roomId)) {
+          // No more devices from this room assigned, so remove room assignment too
+          setRoomChanges(prev => ({
+            add: prev.add.filter(id => id !== device.roomId),
+            remove: [...prev.remove.filter(id => id !== device.roomId), device.roomId]
+          }));
+          
+          setLocalMember(prev => ({
+            ...prev,
+            assignedRooms: prev.assignedRooms.filter(id => id !== device.roomId)
+          }));
+        }
       } else {
         // Mark to add device to member's assignments
         setDeviceChanges(prev => ({
@@ -140,6 +212,19 @@ const MemberAssignments: React.FC<MemberAssignmentsProps> = ({ member, onUpdate 
           ...prev,
           assignedDevices: [...prev.assignedDevices, deviceId]
         }));
+        
+        // Also ensure the room is assigned
+        if (!localMember.assignedRooms.includes(device.roomId)) {
+          setRoomChanges(prev => ({
+            remove: prev.remove.filter(id => id !== device.roomId),
+            add: [...prev.add.filter(id => id !== device.roomId), device.roomId]
+          }));
+          
+          setLocalMember(prev => ({
+            ...prev,
+            assignedRooms: [...prev.assignedRooms, device.roomId]
+          }));
+        }
       }
       
       setPendingChanges(true);

@@ -1,12 +1,25 @@
 
 import { Member } from "@/lib/types";
 import { useState, useEffect } from "react";
-import { User, Crown, UserCheck, UserMinus, UserPlus, Home, Pencil } from "lucide-react";
+import { User, Crown, UserCheck, UserMinus, UserPlus, Home, Trash2 } from "lucide-react";
 import { db } from "@/lib/firebase";
-import { collection, query, where, orderBy, limit, getDocs } from "firebase/firestore";
+import { doc, deleteDoc } from "firebase/firestore";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import MemberAssignments from "./MemberAssignments";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { toast } from "@/components/ui/sonner";
 
 interface MemberItemProps {
   member: Member;
@@ -23,6 +36,7 @@ const MemberItem: React.FC<MemberItemProps> = ({
 }) => {
   const [assignedRoomsCount, setAssignedRoomsCount] = useState<number>(0);
   const [assignedDevicesCount, setAssignedDevicesCount] = useState<number>(0);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   useEffect(() => {
     setAssignedRoomsCount(member.assignedRooms.length || 0);
@@ -56,6 +70,23 @@ const MemberItem: React.FC<MemberItemProps> = ({
         return "text-purple-500 bg-purple-50";
       default:
         return "text-gray-500 bg-gray-50";
+    }
+  };
+
+  const handleDeleteMember = async () => {
+    try {
+      setIsDeleting(true);
+      await deleteDoc(doc(db, "members", member.memberId));
+      toast.success(`${member.member_name} has been deleted`);
+      
+      if (onUpdate) {
+        onUpdate();
+      }
+    } catch (error) {
+      console.error("Error deleting member:", error);
+      toast.error("Failed to delete member");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -101,7 +132,37 @@ const MemberItem: React.FC<MemberItemProps> = ({
             )}
           </div>
           
-          <MemberAssignments member={member} onUpdate={onUpdate} />
+          <div className="flex gap-2 mt-2">
+            <MemberAssignments member={member} onUpdate={onUpdate} />
+            
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" size="sm" className="text-destructive">
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Delete
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete {member.member_name} from the system.
+                    This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleDeleteMember}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    disabled={isDeleting}
+                  >
+                    {isDeleting ? "Deleting..." : "Delete"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </div>
       </div>
     </div>
