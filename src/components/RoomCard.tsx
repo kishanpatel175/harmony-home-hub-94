@@ -75,8 +75,8 @@ const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
       }}
     >
       <div className={cn(
-        "glass-card p-4 rounded-xl h-full", 
-        activeDevices > 0 ? "card-pulse" : ""
+        "neo-card p-4 rounded-xl h-full", 
+        activeDevices > 0 ? "border-l-4 border-l-primary" : ""
       )}>
         <div className="flex flex-col h-full">
           <div className="flex justify-between items-start">
@@ -94,7 +94,7 @@ const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
           <div className="flex items-center gap-2 mb-2">
             <h3 className="font-medium text-lg">{room.room_name}</h3>
             {activeDevices > 0 && (
-              <Sparkles className="w-4 h-4 text-primary animate-pulse" />
+              <Sparkles className="w-4 h-4 text-primary" />
             )}
           </div>
           
