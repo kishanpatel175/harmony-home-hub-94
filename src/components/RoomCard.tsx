@@ -17,6 +17,7 @@ const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
   const [totalDevices, setTotalDevices] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [hasAnimated, setHasAnimated] = useState<boolean>(false);
+  const [forceUpdate, setForceUpdate] = useState<number>(0);
 
   const fetchDevices = useCallback(async () => {
     try {
@@ -50,10 +51,21 @@ const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
   useEffect(() => {
     fetchDevices();
     
-    // Add event listener for device updates
-    const handleDeviceUpdate = () => {
-      console.log("Device update detected, refreshing room:", room.room_name);
-      fetchDevices();
+    // Enhanced event listener to handle all types of updates with appropriate response
+    const handleDeviceUpdate = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      
+      // If this is a privileged user change, force an immediate update
+      if (customEvent.detail?.type === 'privileged_user_changed' || 
+          customEvent.detail?.type === 'privileged_user_document_changed') {
+        console.log("Privileged user changed, refreshing room immediately:", room.room_name);
+        setForceUpdate(prev => prev + 1);
+        fetchDevices();
+      } else {
+        // Normal device update
+        console.log("Device update detected, refreshing room:", room.room_name);
+        fetchDevices();
+      }
     };
     
     deviceUpdateEvent.addEventListener(DEVICE_UPDATE_EVENT, handleDeviceUpdate);
@@ -61,7 +73,7 @@ const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
     return () => {
       deviceUpdateEvent.removeEventListener(DEVICE_UPDATE_EVENT, handleDeviceUpdate);
     };
-  }, [room.roomId, fetchDevices, room.room_name]);
+  }, [room.roomId, fetchDevices, room.room_name, forceUpdate]);
 
   return (
     <Link 

@@ -13,6 +13,7 @@ const StatusDisplay = () => {
   const [privilegedRole, setPrivilegedRole] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [privilegedUserDetails, setPrivilegedUserDetails] = useState<Member | null>(null);
+  const [refreshKey, setRefreshKey] = useState<number>(0); // Add refresh key for forced rerenders
 
   // Function to fetch present members and return them
   const fetchPresentMembers = async () => {
@@ -38,6 +39,44 @@ const StatusDisplay = () => {
     } catch (error) {
       console.error("Error fetching present members:", error);
       return [];
+    }
+  };
+
+  // Function to refresh all data
+  const refreshAllData = async () => {
+    console.log("Refreshing all status display data");
+    try {
+      // Force re-fetch present members
+      const presentMembers = await fetchPresentMembers();
+      setMembersAtHome(presentMembers);
+      
+      // Force re-fetch privileged user
+      const privilegedUserDoc = await getDoc(doc(db, "current_most_privileged_user", "current"));
+      if (privilegedUserDoc.exists()) {
+        const data = privilegedUserDoc.data();
+        const privilegedUserId = data.current_most_privileged_user_id || "";
+        setPrivilegedUser(privilegedUserId);
+        setPrivilegedRole(data.current_privileged_role || "None");
+        
+        if (privilegedUserId) {
+          const memberDoc = await getDoc(doc(db, "members", privilegedUserId));
+          if (memberDoc.exists()) {
+            setPrivilegedUserDetails({
+              ...memberDoc.data(),
+              memberId: memberDoc.id
+            } as Member);
+          } else {
+            setPrivilegedUserDetails(null);
+          }
+        } else {
+          setPrivilegedUserDetails(null);
+        }
+      }
+      
+      // Force rerender
+      setRefreshKey(prev => prev + 1);
+    } catch (error) {
+      console.error("Error refreshing data:", error);
     }
   };
 
@@ -104,9 +143,18 @@ const StatusDisplay = () => {
       }
     });
     
-    // Listen for device updates to refresh data
-    const handleDeviceUpdate = () => {
-      console.log("Device update detected, refreshing status display");
+    // Enhanced event listener for device updates with specific handling of privileged user changes
+    const handleDeviceUpdate = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      if (customEvent.detail?.type === 'privileged_user_changed' || 
+          customEvent.detail?.type === 'privileged_user_document_changed') {
+        console.log("Privileged user change detected, refreshing status display immediately");
+        refreshAllData();
+      } else {
+        console.log("Device update detected, refreshing status display");
+        // Regular updates - can be less aggressive
+        setRefreshKey(prev => prev + 1);
+      }
     };
     
     deviceUpdateEvent.addEventListener(DEVICE_UPDATE_EVENT, handleDeviceUpdate);

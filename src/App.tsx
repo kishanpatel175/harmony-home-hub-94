@@ -34,6 +34,11 @@ const App = () => {
           current_privileged_role: "",
           updatedAt: serverTimestamp()
         });
+        
+        // Explicitly dispatch event to notify components about privileged user change
+        deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT, { 
+          detail: { type: 'privileged_user_changed', value: null }
+        }));
         return;
       }
       
@@ -64,8 +69,13 @@ const App = () => {
         });
         toast.success(`Most privileged user set to: ${mostPrivilegedUser.member_name}`);
         
-        // Dispatch event to notify components about the change
-        deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT));
+        // Dispatch detailed event to notify components about the privileged user change
+        deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT, { 
+          detail: { 
+            type: 'privileged_user_changed', 
+            value: mostPrivilegedUser 
+          }
+        }));
       } else if (!mostPrivilegedUser && currentPrivilegedId) {
         // If there's no privileged user but we had one before, clear it
         console.log("No privileged user found among present members.");
@@ -74,7 +84,11 @@ const App = () => {
           current_privileged_role: "",
           updatedAt: serverTimestamp()
         });
-        deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT));
+        
+        // Explicitly dispatch event with null value
+        deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT, { 
+          detail: { type: 'privileged_user_changed', value: null }
+        }));
       } else {
         console.log("Privileged user remains unchanged");
       }
@@ -171,10 +185,28 @@ const App = () => {
           await updateMostPrivilegedUser(updatedPresentMembers);
         });
         
+        // Add explicit listener for privileged user changes to force UI updates
+        const privilegedUserRef = doc(db, "current_most_privileged_user", "current");
+        const unsubscribePrivilegedUser = onSnapshot(privilegedUserRef, (docSnapshot) => {
+          if (docSnapshot.exists()) {
+            const data = docSnapshot.data();
+            console.log("Privileged user document changed:", data);
+            
+            // Dispatch an event to force UI refresh across all components
+            deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT, { 
+              detail: { 
+                type: 'privileged_user_document_changed',
+                value: data
+              }
+            }));
+          }
+        });
+        
         setInitializing(false);
         
         return () => {
           unsubscribePresentScan();
+          unsubscribePrivilegedUser();
         };
       } catch (error) {
         console.error("Error initializing Firebase:", error);

@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, addDoc, serverTimestamp, query, orderBy, onSnapshot, doc } from "firebase/firestore";
@@ -31,30 +30,45 @@ const Index = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [isTestMode, setIsTestMode] = useState(false);
   
+  const fetchRooms = async () => {
+    try {
+      setLoading(true);
+      const roomsQuery = query(collection(db, "rooms"), orderBy("room_createdAt", "desc"));
+      const roomsSnapshot = await getDocs(roomsQuery);
+      const roomsList = roomsSnapshot.docs.map(doc => ({
+        ...doc.data(),
+        roomId: doc.id
+      })) as Room[];
+      
+      setRooms(roomsList);
+    } catch (error) {
+      console.error("Error fetching rooms:", error);
+      toast.error("Failed to load rooms");
+    } finally {
+      setLoading(false);
+    }
+  };
+  
   useEffect(() => {
-    const fetchRooms = async () => {
-      try {
-        setLoading(true);
-        const roomsQuery = query(collection(db, "rooms"), orderBy("room_createdAt", "desc"));
-        const roomsSnapshot = await getDocs(roomsQuery);
-        const roomsList = roomsSnapshot.docs.map(doc => ({
-          ...doc.data(),
-          roomId: doc.id
-        })) as Room[];
-        
-        setRooms(roomsList);
-      } catch (error) {
-        console.error("Error fetching rooms:", error);
-        toast.error("Failed to load rooms");
-      } finally {
-        setLoading(false);
+    fetchRooms();
+    
+    const handleDeviceUpdate = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      
+      if (customEvent.detail?.type === 'privileged_user_changed' || 
+          customEvent.detail?.type === 'privileged_user_document_changed') {
+        console.log("Privileged user changed, refreshing all rooms immediately");
+        fetchRooms();
       }
     };
     
-    fetchRooms();
+    deviceUpdateEvent.addEventListener(DEVICE_UPDATE_EVENT, handleDeviceUpdate);
+    
+    return () => {
+      deviceUpdateEvent.removeEventListener(DEVICE_UPDATE_EVENT, handleDeviceUpdate);
+    };
   }, [refreshKey]);
   
-  // Listen for test mode state
   useEffect(() => {
     const testModeRef = doc(db, "test_mode", "current");
     const unsubscribe = onSnapshot(testModeRef, (doc) => {
