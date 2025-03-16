@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { 
   collection, query, orderBy, getDocs, addDoc, serverTimestamp, 
-  doc, deleteDoc, onSnapshot, where
+  doc, onSnapshot, where
 } from "firebase/firestore";
 import { Member, ScanLog, CurrentPrivilegedUser } from "@/lib/types";
 import MemberItem from "@/components/MemberItem";
@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { roleHierarchy } from "@/lib/types";
+import { deviceUpdateEvent, DEVICE_UPDATE_EVENT } from "@/components/PanicModeButton";
 
 const roles = ["Owner", "House Member", "Guest", "Maid"];
 
@@ -36,7 +37,6 @@ const MembersPage = () => {
   const [loading, setLoading] = useState(true);
   const [membersInside, setMembersInside] = useState<string[]>([]);
   const [privilegedUserId, setPrivilegedUserId] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
 
   // New member form
   const [isAddingMember, setIsAddingMember] = useState(false);
@@ -44,33 +44,44 @@ const MembersPage = () => {
   const [newMemberRole, setNewMemberRole] = useState(roles[1]); // Default to House Member
   
   useEffect(() => {
-    const fetchMembers = async () => {
+    setLoading(true);
+    
+    // Set up real-time listeners
+    
+    // 1. Listen for all members
+    const membersQuery = query(
+      collection(db, "members"),
+      orderBy("createdAt", "desc")
+    );
+    
+    const unsubscribeMembers = onSnapshot(membersQuery, (snapshot) => {
       try {
-        setLoading(true);
-        
-        const membersQuery = query(
-          collection(db, "members"),
-          orderBy("createdAt", "desc")
-        );
-        
-        const membersSnapshot = await getDocs(membersQuery);
-        const membersList = membersSnapshot.docs.map(doc => ({
+        const membersList = snapshot.docs.map(doc => ({
           ...doc.data(),
           memberId: doc.id
         })) as Member[];
         
         setMembers(membersList);
-      } catch (error) {
-        console.error("Error fetching members:", error);
-        toast.error("Failed to load members");
-      } finally {
         setLoading(false);
+      } catch (error) {
+        console.error("Error processing members snapshot:", error);
+        toast.error("Failed to update members list");
       }
-    };
+    });
     
-    fetchMembers();
+    // 2. Listen for present members
+    const presentScanRef = collection(db, "present_scan");
     
-    // Listen for the most privileged user
+    const unsubscribePresent = onSnapshot(presentScanRef, (snapshot) => {
+      try {
+        const insideMembers = snapshot.docs.map(doc => doc.id);
+        setMembersInside(insideMembers);
+      } catch (error) {
+        console.error("Error processing present members snapshot:", error);
+      }
+    });
+    
+    // 3. Listen for the most privileged user
     const privilegedUserRef = doc(db, "current_most_privileged_user", "current");
     
     const unsubscribePrivileged = onSnapshot(privilegedUserRef, (doc) => {
@@ -82,46 +93,20 @@ const MembersPage = () => {
       }
     });
     
-    // Determine who is inside the house
-    const getMembersInside = async () => {
-      try {
-        const insideMembers: string[] = [];
-        
-        // For each member, check if they have an inscan without a subsequent outscan
-        for (const member of members) {
-          // Get the latest scan for this member
-          const scanQuery = query(
-            collection(db, "scan_log"),
-            where("scan_memberId", "==", member.memberId),
-            orderBy("scan_time", "desc"),
-            // limit(1) - not using in this example as we're doing client-side filtering
-          );
-          
-          const scanSnapshot = await getDocs(scanQuery);
-          
-          if (!scanSnapshot.empty) {
-            const latestScan = scanSnapshot.docs[0].data() as ScanLog;
-            if (latestScan.scan_type === "inscan") {
-              insideMembers.push(member.memberId);
-            }
-          }
-        }
-        
-        setMembersInside(insideMembers);
-      } catch (error) {
-        console.error("Error determining members inside:", error);
-      }
+    // Listen for device updates to refresh data if needed
+    const handleDeviceUpdate = () => {
+      console.log("Device update detected in MembersPage");
     };
     
-    // For demo purposes, we'll assume some members are inside
-    if (members.length > 0) {
-      setMembersInside(members.slice(0, 2).map(m => m.memberId));
-    }
+    deviceUpdateEvent.addEventListener(DEVICE_UPDATE_EVENT, handleDeviceUpdate);
     
     return () => {
+      unsubscribeMembers();
+      unsubscribePresent();
       unsubscribePrivileged();
+      deviceUpdateEvent.removeEventListener(DEVICE_UPDATE_EVENT, handleDeviceUpdate);
     };
-  }, [refreshKey]);
+  }, []);
   
   const addMember = async () => {
     if (!newMemberName.trim()) {
@@ -143,21 +128,10 @@ const MembersPage = () => {
       setNewMemberName("");
       setNewMemberRole(roles[1]);
       
-      // Refresh the list
-      const membersQuery = query(
-        collection(db, "members"),
-        orderBy("createdAt", "desc")
-      );
-      
-      const membersSnapshot = await getDocs(membersQuery);
-      const membersList = membersSnapshot.docs.map(doc => ({
-        ...doc.data(),
-        memberId: doc.id
-      })) as Member[];
-      
-      setMembers(membersList);
-      
       toast.success("Member added successfully");
+      
+      // Notify other components about the change
+      deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT));
     } catch (error) {
       console.error("Error adding member:", error);
       toast.error("Failed to add member");
@@ -166,9 +140,12 @@ const MembersPage = () => {
     }
   };
 
-  // Function to refresh the members list
+  // Function to refresh the members list - just triggers a re-render
   const handleMemberUpdate = () => {
-    setRefreshKey(prev => prev + 1);
+    // No need to do anything as we have real-time listeners now
+    console.log("Member update triggered");
+    // Still dispatch an event to ensure all components get updated
+    deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT));
   };
 
   return (

@@ -3,7 +3,7 @@ import { Member } from "@/lib/types";
 import { useState, useEffect } from "react";
 import { User, Crown, UserCheck, UserMinus, UserPlus, Home, Trash2 } from "lucide-react";
 import { db } from "@/lib/firebase";
-import { doc, deleteDoc } from "firebase/firestore";
+import { doc, deleteDoc, onSnapshot } from "firebase/firestore";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "@/components/ui/sonner";
+import { deviceUpdateEvent, DEVICE_UPDATE_EVENT } from "./PanicModeButton";
 
 interface MemberItemProps {
   member: Member;
@@ -37,10 +38,53 @@ const MemberItem: React.FC<MemberItemProps> = ({
   const [assignedRoomsCount, setAssignedRoomsCount] = useState<number>(0);
   const [assignedDevicesCount, setAssignedDevicesCount] = useState<number>(0);
   const [isDeleting, setIsDeleting] = useState(false);
+  // New state to locally track privileged status
+  const [localIsPrivileged, setLocalIsPrivileged] = useState(isPrivileged);
+  // New state to locally track inside status
+  const [localIsInside, setLocalIsInside] = useState(isInside);
+  
+  useEffect(() => {
+    setLocalIsPrivileged(isPrivileged);
+  }, [isPrivileged]);
+  
+  useEffect(() => {
+    setLocalIsInside(isInside);
+  }, [isInside]);
   
   useEffect(() => {
     setAssignedRoomsCount(member.assignedRooms.length || 0);
     setAssignedDevicesCount(member.assignedDevices.length || 0);
+    
+    // Listen for the privileged user changes
+    const privilegedUserRef = doc(db, "current_most_privileged_user", "current");
+    const unsubscribePrivileged = onSnapshot(privilegedUserRef, (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        const data = docSnapshot.data();
+        const privilegedUserId = data.current_most_privileged_user_id || "";
+        setLocalIsPrivileged(privilegedUserId === member.memberId);
+      } else {
+        setLocalIsPrivileged(false);
+      }
+    });
+    
+    // Listen for the present_scan changes to determine if member is inside
+    const presentMemberRef = doc(db, "present_scan", member.memberId);
+    const unsubscribePresent = onSnapshot(presentMemberRef, (docSnapshot) => {
+      setLocalIsInside(docSnapshot.exists());
+    });
+    
+    // Listen for device update events to refresh data
+    const handleDeviceUpdate = () => {
+      // This will be triggered when privileged user changes
+    };
+    
+    deviceUpdateEvent.addEventListener(DEVICE_UPDATE_EVENT, handleDeviceUpdate);
+    
+    return () => {
+      unsubscribePrivileged();
+      unsubscribePresent();
+      deviceUpdateEvent.removeEventListener(DEVICE_UPDATE_EVENT, handleDeviceUpdate);
+    };
   }, [member]);
 
   const getRoleIcon = () => {
@@ -79,6 +123,9 @@ const MemberItem: React.FC<MemberItemProps> = ({
       await deleteDoc(doc(db, "members", member.memberId));
       toast.success(`${member.member_name} has been deleted`);
       
+      // Dispatch an event to notify components about member deletion
+      deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT));
+      
       if (onUpdate) {
         onUpdate();
       }
@@ -93,12 +140,12 @@ const MemberItem: React.FC<MemberItemProps> = ({
   return (
     <div className={cn(
       "glass-card p-4 rounded-xl transition-standard",
-      isPrivileged ? "ring-2 ring-primary/30" : ""
+      localIsPrivileged ? "ring-2 ring-primary/30" : ""
     )}>
       <div className="flex items-center gap-4">
         <div className={cn(
           "w-12 h-12 rounded-full flex items-center justify-center",
-          isInside ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+          localIsInside ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
         )}>
           <User className="w-6 h-6" />
         </div>
@@ -106,12 +153,12 @@ const MemberItem: React.FC<MemberItemProps> = ({
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
             <h3 className="font-medium">{member.member_name}</h3>
-            {isPrivileged && (
+            {localIsPrivileged && (
               <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">
                 Privileged
               </Badge>
             )}
-            {isInside && (
+            {localIsInside && (
               <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-500 border-emerald-200">
                 Inside
               </Badge>
