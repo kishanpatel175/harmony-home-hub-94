@@ -68,7 +68,10 @@ const PanicModeButton = () => {
         await batch.commit();
         
         // Dispatch custom event to notify components that device statuses have changed
-        deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT));
+        // Add a slight delay to ensure batch operations have been processed
+        setTimeout(() => {
+          deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT));
+        }, 200);
         
         toast.success("Panic mode activated. All doors unlocked and devices turned off.");
       } else {

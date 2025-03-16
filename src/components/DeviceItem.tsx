@@ -24,6 +24,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { deviceUpdateEvent, DEVICE_UPDATE_EVENT } from "./PanicModeButton";
 
 interface DeviceItemProps {
   device: Device;
@@ -43,11 +44,20 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
   const [isAssigned, setIsAssigned] = useState<boolean>(true);
   
   useEffect(() => {
+    // Set initial status from device prop
     setStatus(device.device_status);
+    
+    // Listen for device status changes
+    const deviceRef = doc(db, "devices", device.deviceId);
+    const unsubscribeDevice = onSnapshot(deviceRef, (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        const data = docSnapshot.data();
+        setStatus(data.device_status);
+      }
+    });
     
     // Listen for panic mode changes
     const panicModeRef = doc(db, "panic_mode", "current");
-    
     const unsubscribePanic = onSnapshot(panicModeRef, (docSnapshot) => {
       if (docSnapshot.exists()) {
         setPanicMode(docSnapshot.data()?.is_panic_mode || false);
@@ -56,7 +66,6 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
     
     // Listen to current privileged user
     const privilegedUserRef = doc(db, "current_most_privileged_user", "current");
-    
     const unsubscribePrivileged = onSnapshot(privilegedUserRef, async (docSnapshot) => {
       if (docSnapshot.exists()) {
         const data = docSnapshot.data();
@@ -87,9 +96,30 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
       }
     });
     
+    // Listen for device update events
+    const handleDeviceUpdate = () => {
+      // Refresh device status
+      const refreshDeviceStatus = async () => {
+        try {
+          const deviceDoc = await getDoc(doc(db, "devices", device.deviceId));
+          if (deviceDoc.exists()) {
+            setStatus(deviceDoc.data().device_status);
+          }
+        } catch (error) {
+          console.error("Error refreshing device status:", error);
+        }
+      };
+      
+      refreshDeviceStatus();
+    };
+    
+    deviceUpdateEvent.addEventListener(DEVICE_UPDATE_EVENT, handleDeviceUpdate);
+    
     return () => {
+      unsubscribeDevice();
       unsubscribePanic();
       unsubscribePrivileged();
+      deviceUpdateEvent.removeEventListener(DEVICE_UPDATE_EVENT, handleDeviceUpdate);
     };
   }, [device, status]);
 
@@ -111,8 +141,12 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
         device_status: newStatus
       });
       
-      setStatus(newStatus);
+      // Don't set status here, let the onSnapshot handler update it
+      // setStatus(newStatus);
       toast.success(`${device.device_name} turned ${newStatus}`);
+      
+      // Notify other components about device status change
+      deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT));
     } catch (error) {
       console.error("Error toggling device:", error);
       toast.error("Failed to update device status");

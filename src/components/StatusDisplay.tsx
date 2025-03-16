@@ -14,6 +14,33 @@ const StatusDisplay = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [privilegedUserDetails, setPrivilegedUserDetails] = useState<Member | null>(null);
 
+  // Function to fetch present members and return them
+  const fetchPresentMembers = async () => {
+    try {
+      const presentMembersRef = collection(db, "present_scan");
+      const snapshot = await getDocs(presentMembersRef);
+      
+      const presentMembers: Member[] = [];
+      
+      for (const docSnap of snapshot.docs) {
+        // Get the full member data
+        const memberDoc = await getDoc(doc(db, "members", docSnap.id));
+        
+        if (memberDoc.exists()) {
+          presentMembers.push({
+            ...memberDoc.data(),
+            memberId: memberDoc.id
+          } as Member);
+        }
+      }
+      
+      return presentMembers;
+    } catch (error) {
+      console.error("Error fetching present members:", error);
+      return [];
+    }
+  };
+
   useEffect(() => {
     setLoading(true);
     

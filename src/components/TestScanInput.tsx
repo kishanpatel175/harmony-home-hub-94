@@ -237,6 +237,9 @@ const TestScanInput = () => {
       
       // Reset selection
       setSelectedMemberId("");
+      
+      // Trigger device update event to refresh components
+      deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT));
     } catch (error) {
       console.error("Error processing scan:", error);
       toast.error("Failed to process scan");
