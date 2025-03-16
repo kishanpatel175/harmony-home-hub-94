@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
-import { collection, query, orderBy, limit, getDocs, doc, onSnapshot } from "firebase/firestore";
+import { collection, query, orderBy, limit, getDocs, doc, onSnapshot, getDoc } from "firebase/firestore";
 import { UserRound, Home as HomeIcon, Shield, Users, UserCheck, LogIn, LogOut } from "lucide-react";
 import { deviceUpdateEvent, DEVICE_UPDATE_EVENT } from "./PanicModeButton";
 import { Member } from "@/lib/types";
