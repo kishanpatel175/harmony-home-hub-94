@@ -48,18 +48,18 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
     // Listen for panic mode changes
     const panicModeRef = doc(db, "panic_mode", "current");
     
-    const unsubscribePanic = onSnapshot(panicModeRef, (doc) => {
-      if (doc.exists()) {
-        setPanicMode(doc.data()?.is_panic_mode || false);
+    const unsubscribePanic = onSnapshot(panicModeRef, (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        setPanicMode(docSnapshot.data()?.is_panic_mode || false);
       }
     });
     
     // Listen to current privileged user
     const privilegedUserRef = doc(db, "current_most_privileged_user", "current");
     
-    const unsubscribePrivileged = onSnapshot(privilegedUserRef, async (doc) => {
-      if (doc.exists()) {
-        const data = doc.data();
+    const unsubscribePrivileged = onSnapshot(privilegedUserRef, async (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        const data = docSnapshot.data();
         const privilegedUserId = data.current_most_privileged_user_id || "";
         setPrivilegedUser(privilegedUserId);
         
