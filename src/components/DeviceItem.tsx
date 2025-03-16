@@ -74,6 +74,7 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
         
         // Check if device is assigned to privileged user
         if (privilegedUserId) {
+          // Fix: properly check if the device is assigned to the privileged user
           const isDeviceAssigned = device.assignedMembers.includes(privilegedUserId);
           setIsAssigned(isDeviceAssigned);
           
@@ -121,9 +122,10 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
       unsubscribePrivileged();
       deviceUpdateEvent.removeEventListener(DEVICE_UPDATE_EVENT, handleDeviceUpdate);
     };
-  }, [device, status]);
+  }, [device]);
 
   const toggleDevice = async () => {
+    // Fix: Remove status from dependency array to avoid old state
     if (isUpdating || !canControl || panicMode) return;
     
     // If there's a privileged user and device is not assigned, don't allow toggling
@@ -134,7 +136,16 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
     
     try {
       setIsUpdating(true);
-      const newStatus = status === "ON" ? "OFF" : "ON";
+      
+      // Get fresh status from Firestore to ensure we're working with latest data
+      const deviceDoc = await getDoc(doc(db, "devices", device.deviceId));
+      if (!deviceDoc.exists()) {
+        toast.error("Device not found");
+        return;
+      }
+      
+      const currentStatus = deviceDoc.data().device_status;
+      const newStatus = currentStatus === "ON" ? "OFF" : "ON";
       
       const deviceRef = doc(db, "devices", device.deviceId);
       await updateDoc(deviceRef, {
@@ -142,7 +153,6 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
       });
       
       // Don't set status here, let the onSnapshot handler update it
-      // setStatus(newStatus);
       toast.success(`${device.device_name} turned ${newStatus}`);
       
       // Notify other components about device status change
