@@ -1,16 +1,18 @@
 
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, addDoc, serverTimestamp, query, orderBy } from "firebase/firestore";
+import { collection, getDocs, addDoc, serverTimestamp, query, orderBy, onSnapshot, doc } from "firebase/firestore";
 import { Room } from "@/lib/types";
 import RoomCard from "@/components/RoomCard";
 import PanicModeButton from "@/components/PanicModeButton";
 import StatusDisplay from "@/components/StatusDisplay";
-import { Plus, RefreshCw } from "lucide-react";
+import { Plus, RefreshCw, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/sonner";
 import ThemeToggle from "@/components/ThemeToggle";
+import TestModeToggle from "@/components/TestModeToggle";
+import TestScanInput from "@/components/TestScanInput";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +29,7 @@ const Index = () => {
   const [isAddingRoom, setIsAddingRoom] = useState(false);
   const [newRoomName, setNewRoomName] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [isTestMode, setIsTestMode] = useState(false);
   
   useEffect(() => {
     const fetchRooms = async () => {
@@ -50,6 +53,18 @@ const Index = () => {
     
     fetchRooms();
   }, [refreshKey]);
+  
+  // Listen for test mode state
+  useEffect(() => {
+    const testModeRef = doc(db, "test_mode", "current");
+    const unsubscribe = onSnapshot(testModeRef, (doc) => {
+      if (doc.exists()) {
+        setIsTestMode(doc.data().is_test_mode || false);
+      }
+    });
+    
+    return () => unsubscribe();
+  }, []);
   
   const addRoom = async () => {
     if (!newRoomName.trim()) {
@@ -81,7 +96,10 @@ const Index = () => {
     <div className="container mx-auto px-4 pb-20 pt-6 min-h-screen">
       <header className="mb-6 animate-fade-in">
         <div className="flex justify-between items-center mb-2">
-          <h1 className="text-2xl font-semibold">Smart Home Hub</h1>
+          <div className="flex items-center gap-2">
+            <LayoutDashboard className="w-6 h-6 text-primary" />
+            <h1 className="text-2xl font-semibold">Smart Home Hub</h1>
+          </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
             <Button 
@@ -96,6 +114,15 @@ const Index = () => {
         </div>
         <p className="text-muted-foreground">Manage your rooms, devices, and members</p>
       </header>
+      
+      {/* Test Mode Controls */}
+      <div className="mb-4">
+        <TestModeToggle />
+      </div>
+      
+      {isTestMode && (
+        <TestScanInput />
+      )}
       
       <StatusDisplay />
       

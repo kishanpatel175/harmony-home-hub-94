@@ -2,12 +2,12 @@
 import { Device, CurrentPrivilegedUser } from "@/lib/types";
 import { useState, useEffect } from "react";
 import { 
-  Lightbulb, Fan, Tv, Lock, Refrigerator, Power, Trash2, MoreHorizontal 
+  Lightbulb, Fan, Tv, Lock, Refrigerator, Power, Trash2, MoreHorizontal, AlertTriangle 
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { db } from "@/lib/firebase";
-import { doc, updateDoc, onSnapshot } from "firebase/firestore";
+import { doc, updateDoc, onSnapshot, getDoc } from "firebase/firestore";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/sonner";
 import {
@@ -18,6 +18,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface DeviceItemProps {
   device: Device;
@@ -33,6 +39,8 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
   const [status, setStatus] = useState<"ON" | "OFF">(device.device_status);
   const [isUpdating, setIsUpdating] = useState<boolean>(false);
   const [panicMode, setPanicMode] = useState<boolean>(false);
+  const [privilegedUser, setPrivilegedUser] = useState<string>("");
+  const [isAssigned, setIsAssigned] = useState<boolean>(true);
   
   useEffect(() => {
     setStatus(device.device_status);
@@ -40,17 +48,59 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
     // Listen for panic mode changes
     const panicModeRef = doc(db, "panic_mode", "current");
     
-    const unsubscribe = onSnapshot(panicModeRef, (doc) => {
+    const unsubscribePanic = onSnapshot(panicModeRef, (doc) => {
       if (doc.exists()) {
         setPanicMode(doc.data()?.is_panic_mode || false);
       }
     });
     
-    return () => unsubscribe();
-  }, [device]);
+    // Listen to current privileged user
+    const privilegedUserRef = doc(db, "current_most_privileged_user", "current");
+    
+    const unsubscribePrivileged = onSnapshot(privilegedUserRef, async (doc) => {
+      if (doc.exists()) {
+        const data = doc.data();
+        const privilegedUserId = data.current_most_privileged_user_id || "";
+        setPrivilegedUser(privilegedUserId);
+        
+        // Check if device is assigned to privileged user
+        if (privilegedUserId) {
+          const isDeviceAssigned = device.assignedMembers.includes(privilegedUserId);
+          setIsAssigned(isDeviceAssigned);
+          
+          // Auto turn off unassigned devices when privileged user changes
+          if (!isDeviceAssigned && status === "ON") {
+            try {
+              const deviceRef = doc(db, "devices", device.deviceId);
+              await updateDoc(deviceRef, {
+                device_status: "OFF"
+              });
+              setStatus("OFF");
+            } catch (error) {
+              console.error("Error turning off unassigned device:", error);
+            }
+          }
+        } else {
+          // If no privileged user, allow control of all devices (default behavior)
+          setIsAssigned(true);
+        }
+      }
+    });
+    
+    return () => {
+      unsubscribePanic();
+      unsubscribePrivileged();
+    };
+  }, [device, status]);
 
   const toggleDevice = async () => {
     if (isUpdating || !canControl || panicMode) return;
+    
+    // If there's a privileged user and device is not assigned, don't allow toggling
+    if (privilegedUser && !isAssigned) {
+      toast.error("Device not assigned to the current privileged user");
+      return;
+    }
     
     try {
       setIsUpdating(true);
@@ -91,7 +141,8 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
   return (
     <div className={cn(
       "glass-card p-4 rounded-xl transition-standard",
-      status === "ON" ? "bg-white/90" : "bg-white/60" 
+      status === "ON" ? "bg-white/90" : "bg-white/60",
+      !isAssigned && privilegedUser ? "border-l-4 border-l-amber-400" : ""
     )}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -109,11 +160,28 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
         </div>
         
         <div className="flex items-center gap-2">
+          {!isAssigned && privilegedUser ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-1 mr-1 text-amber-500">
+                    <AlertTriangle className="w-4 h-4" />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Not assigned to privileged user</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : null}
+          
           <Switch 
             checked={status === "ON"} 
             onCheckedChange={toggleDevice}
-            disabled={!canControl || panicMode || isUpdating}
-            className={canControl && !panicMode ? "" : "opacity-50 cursor-not-allowed"}
+            disabled={!canControl || panicMode || isUpdating || (privilegedUser && !isAssigned)}
+            className={cn(
+              canControl && !panicMode && (isAssigned || !privilegedUser) ? "" : "opacity-50 cursor-not-allowed"
+            )}
           />
           
           <DropdownMenu>
