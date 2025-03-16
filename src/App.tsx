@@ -183,6 +183,9 @@ const App = () => {
           
           // Update the privileged user based on the latest present members
           await updateMostPrivilegedUser(updatedPresentMembers);
+          
+          // Force a page reload on present_scan changes
+          window.location.reload();
         });
         
         // Add explicit listener for privileged user changes to force UI updates
@@ -199,6 +202,9 @@ const App = () => {
                 value: data
               }
             }));
+            
+            // Force a page reload on privileged user changes
+            window.location.reload();
           }
         });
         
