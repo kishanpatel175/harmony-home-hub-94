@@ -12,6 +12,7 @@ const StatusDisplay = () => {
   const [privilegedUser, setPrivilegedUser] = useState<string>("");
   const [privilegedRole, setPrivilegedRole] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
+  const [privilegedUserDetails, setPrivilegedUserDetails] = useState<Member | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -22,19 +23,14 @@ const StatusDisplay = () => {
       try {
         const presentMembers: Member[] = [];
         
-        for (const doc of snapshot.docs) {
+        for (const docSnap of snapshot.docs) {
           // Get the full member data
-          const memberDoc = await getDocs(query(
-            collection(db, "members"), 
-            orderBy("member_name")
-          ));
+          const memberDoc = await getDoc(doc(db, "members", docSnap.id));
           
-          const foundMember = memberDoc.docs.find(m => m.id === doc.id);
-          
-          if (foundMember) {
+          if (memberDoc.exists()) {
             presentMembers.push({
-              ...foundMember.data(),
-              memberId: foundMember.id
+              ...memberDoc.data(),
+              memberId: memberDoc.id
             } as Member);
           }
         }
@@ -48,11 +44,36 @@ const StatusDisplay = () => {
     
     // Listen to current privileged user
     const privilegedUserRef = doc(db, "current_most_privileged_user", "current");
-    const unsubscribePrivileged = onSnapshot(privilegedUserRef, (doc) => {
-      if (doc.exists()) {
-        const data = doc.data();
-        setPrivilegedUser(data.current_most_privileged_user_id || "None");
+    const unsubscribePrivileged = onSnapshot(privilegedUserRef, async (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        const data = docSnapshot.data();
+        const privilegedUserId = data.current_most_privileged_user_id || "";
+        setPrivilegedUser(privilegedUserId);
         setPrivilegedRole(data.current_privileged_role || "None");
+        
+        // Fetch the full details of the privileged user if ID exists
+        if (privilegedUserId) {
+          try {
+            const memberDoc = await getDoc(doc(db, "members", privilegedUserId));
+            if (memberDoc.exists()) {
+              setPrivilegedUserDetails({
+                ...memberDoc.data(),
+                memberId: memberDoc.id
+              } as Member);
+            } else {
+              setPrivilegedUserDetails(null);
+            }
+          } catch (error) {
+            console.error("Error fetching privileged user details:", error);
+            setPrivilegedUserDetails(null);
+          }
+        } else {
+          setPrivilegedUserDetails(null);
+        }
+      } else {
+        setPrivilegedUser("");
+        setPrivilegedRole("None");
+        setPrivilegedUserDetails(null);
       }
     });
     
@@ -96,9 +117,9 @@ const StatusDisplay = () => {
                 <div className="flex items-center gap-1">
                   <UserRound className="w-3.5 h-3.5 text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">
-                    {privilegedUser === "None" ? "None" : (
+                    {privilegedUser === "" ? "None" : (
                       <>
-                        {membersAtHome.find(m => m.memberId === privilegedUser)?.member_name || "Unknown"} 
+                        {privilegedUserDetails?.member_name || "Unknown"} 
                         <span className="text-xs ml-1 opacity-70">({privilegedRole})</span>
                       </>
                     )}

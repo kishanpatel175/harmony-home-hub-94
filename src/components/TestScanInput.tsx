@@ -105,9 +105,10 @@ const TestScanInput = () => {
   // Update most privileged user
   const updateMostPrivilegedUser = async () => {
     try {
+      console.log("Updating most privileged user based on present members...");
       // Find the most privileged user among present members
       let mostPrivilegedUser: Member | null = null;
-      let highestRoleRank = 0;
+      let highestRoleRank = -1;
       
       for (const member of presentMembers) {
         const roleRank = roleHierarchy[member.role as keyof typeof roleHierarchy] || 0;
@@ -117,30 +118,41 @@ const TestScanInput = () => {
         }
       }
       
-      // Update the current_most_privileged_user document
+      // Get the current privileged user to check if it needs updating
       const privilegedUserRef = doc(db, "current_most_privileged_user", "current");
+      const privilegedUserDoc = await getDoc(privilegedUserRef);
+      const currentPrivilegedId = privilegedUserDoc.exists() ? 
+        privilegedUserDoc.data().current_most_privileged_user_id : "";
       
-      if (mostPrivilegedUser) {
-        await setDoc(privilegedUserRef, {
-          current_most_privileged_user_id: mostPrivilegedUser.memberId,
-          current_privileged_role: mostPrivilegedUser.role,
-          updatedAt: serverTimestamp()
-        });
-        console.log("Updated most privileged user to:", mostPrivilegedUser.member_name);
+      // Only update if the privileged user has changed
+      const newPrivilegedId = mostPrivilegedUser?.memberId || "";
+      
+      if (currentPrivilegedId !== newPrivilegedId) {
+        if (mostPrivilegedUser) {
+          console.log(`Updating most privileged user to: ${mostPrivilegedUser.member_name} (${mostPrivilegedUser.role})`);
+          await setDoc(privilegedUserRef, {
+            current_most_privileged_user_id: mostPrivilegedUser.memberId,
+            current_privileged_role: mostPrivilegedUser.role,
+            updatedAt: serverTimestamp()
+          });
+        } else {
+          // No one is present, clear the privileged user
+          console.log("Clearing most privileged user - no one present");
+          await setDoc(privilegedUserRef, {
+            current_most_privileged_user_id: "",
+            current_privileged_role: "",
+            updatedAt: serverTimestamp()
+          });
+        }
+        
+        // Trigger an update event so that device controls refresh
+        deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT));
       } else {
-        // No one is present, clear the privileged user
-        await setDoc(privilegedUserRef, {
-          current_most_privileged_user_id: "",
-          current_privileged_role: "",
-          updatedAt: serverTimestamp()
-        });
-        console.log("Cleared most privileged user - no one present");
+        console.log("Most privileged user unchanged, no update needed");
       }
-      
-      // Trigger an update event so that device controls refresh
-      deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT));
     } catch (error) {
       console.error("Error updating most privileged user:", error);
+      toast.error("Failed to update privilege status");
     }
   };
 
@@ -169,11 +181,13 @@ const TestScanInput = () => {
       
       if (scanType === "inscan" && isPresent) {
         toast.error(`${selectedMember.member_name} is already inside the house`);
+        setIsProcessing(false);
         return;
       }
       
       if (scanType === "outscan" && !isPresent) {
         toast.error(`${selectedMember.member_name} is not currently inside the house`);
+        setIsProcessing(false);
         return;
       }
       
@@ -194,6 +208,9 @@ const TestScanInput = () => {
         });
         
         toast.success(`${selectedMember.member_name} has entered the house`);
+        
+        // Update presentMembers with the new member
+        setPresentMembers(prev => [...prev, selectedMember]);
       } else {
         // Remove from present_scan collection
         await deleteDoc(memberPresentDoc);
@@ -206,17 +223,23 @@ const TestScanInput = () => {
         });
         
         toast.success(`${selectedMember.member_name} has left the house`);
+        
+        // Remove member from presentMembers
+        setPresentMembers(prev => prev.filter(m => m.memberId !== selectedMemberId));
       }
       
       // Update the most privileged user
-      await updateMostPrivilegedUser();
+      // Wait a short moment to ensure Firestore operations have propagated
+      setTimeout(async () => {
+        await updateMostPrivilegedUser();
+        setIsProcessing(false);
+      }, 300);
       
       // Reset selection
       setSelectedMemberId("");
     } catch (error) {
       console.error("Error processing scan:", error);
       toast.error("Failed to process scan");
-    } finally {
       setIsProcessing(false);
     }
   };
