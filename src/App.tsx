@@ -9,7 +9,7 @@ import NotFound from "./pages/NotFound";
 import RoomDetail from "./pages/RoomDetail";
 import MembersPage from "./pages/MembersPage";
 import Navigation from "./components/Navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { db } from "./lib/firebase";
 import { doc, setDoc, serverTimestamp, collection, getDocs, getDoc, onSnapshot } from "firebase/firestore";
 import { Member, roleHierarchy } from "./lib/types";
@@ -20,6 +20,9 @@ const queryClient = new QueryClient();
 
 const App = () => {
   const [initializing, setInitializing] = useState(true);
+  // Use refs to track previous values for comparison
+  const prevPrivilegedUserRef = useRef<string>("");
+  const isInitialLoadRef = useRef<boolean>(true);
 
   // Improved function to calculate and update the most privileged user
   const updateMostPrivilegedUser = async (presentMembers: Member[]) => {
@@ -158,6 +161,12 @@ const App = () => {
         
         console.log("Firebase initialized with default documents");
         
+        // Get the current privileged user ID to compare with future changes
+        const currentPrivilegedDoc = await getDoc(doc(db, "current_most_privileged_user", "current"));
+        if (currentPrivilegedDoc.exists()) {
+          prevPrivilegedUserRef.current = currentPrivilegedDoc.data().current_most_privileged_user_id || "";
+        }
+        
         // Setup listener for present_scan collection to update privileged user in real-time
         const presentScanRef = collection(db, "present_scan");
         const unsubscribePresentScan = onSnapshot(presentScanRef, async (snapshot) => {
@@ -183,9 +192,6 @@ const App = () => {
           
           // Update the privileged user based on the latest present members
           await updateMostPrivilegedUser(updatedPresentMembers);
-          
-          // Force a page reload on present_scan changes
-          window.location.reload();
         });
         
         // Add explicit listener for privileged user changes to force UI updates
@@ -194,6 +200,7 @@ const App = () => {
           if (docSnapshot.exists()) {
             const data = docSnapshot.data();
             console.log("Privileged user document changed:", data);
+            const newPrivilegedUserId = data.current_most_privileged_user_id || "";
             
             // Dispatch an event to force UI refresh across all components
             deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT, { 
@@ -203,8 +210,19 @@ const App = () => {
               }
             }));
             
-            // Force a page reload on privileged user changes
-            window.location.reload();
+            // Only reload if not initial load and the privileged user has actually changed
+            if (!isInitialLoadRef.current && prevPrivilegedUserRef.current !== newPrivilegedUserId) {
+              console.log("Privileged user changed from", prevPrivilegedUserRef.current, "to", newPrivilegedUserId);
+              prevPrivilegedUserRef.current = newPrivilegedUserId;
+              // Force a page reload only when the privileged user actually changes
+              window.location.reload();
+            } else {
+              // Update ref for future comparisons but don't reload
+              prevPrivilegedUserRef.current = newPrivilegedUserId;
+              if (isInitialLoadRef.current) {
+                isInitialLoadRef.current = false;
+              }
+            }
           }
         });
         
