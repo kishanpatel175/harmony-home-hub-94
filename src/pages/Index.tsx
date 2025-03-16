@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, addDoc, serverTimestamp, query, orderBy, onSnapshot, doc } from "firebase/firestore";
@@ -12,6 +13,7 @@ import { toast } from "@/components/ui/sonner";
 import ThemeToggle from "@/components/ThemeToggle";
 import TestModeToggle from "@/components/TestModeToggle";
 import TestScanInput from "@/components/TestScanInput";
+import { deviceUpdateEvent, DEVICE_UPDATE_EVENT } from "@/components/PanicModeButton";
 import {
   Dialog,
   DialogContent,
