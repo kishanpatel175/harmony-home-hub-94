@@ -8,6 +8,7 @@ import {
 } from "firebase/firestore";
 import { Room, Device, CurrentPrivilegedUser } from "@/lib/types";
 import DeviceItem from "@/components/DeviceItem";
+import { useAuth } from "@/contexts/AuthContext";
 import { 
   ChevronLeft, Plus, RefreshCw, Trash2, AlertTriangle
 } from "lucide-react";
@@ -59,6 +60,7 @@ const RoomDetail = () => {
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
+  const { isAdmin } = useAuth();
   
   // New device form state
   const [isAddingDevice, setIsAddingDevice] = useState(false);
@@ -282,175 +284,181 @@ const RoomDetail = () => {
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-medium">Devices</h2>
         
-        <div className="flex items-center gap-2">
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button size="sm" className="flex items-center gap-1">
-                <Plus className="h-4 w-4" />
-                <span>Add Device</span>
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add New Device</DialogTitle>
-                <DialogDescription>
-                  Enter details for the new device in {room?.room_name}.
-                </DialogDescription>
-              </DialogHeader>
-              
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <label htmlFor="device-name" className="text-sm font-medium">
-                    Device Name
-                  </label>
-                  <Input
-                    id="device-name"
-                    placeholder="Device name (e.g. Ceiling Light)"
-                    value={newDeviceName}
-                    onChange={(e) => setNewDeviceName(e.target.value)}
-                  />
+        {isAdmin && (
+          <div className="flex items-center gap-2">
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button size="sm" className="flex items-center gap-1">
+                  <Plus className="h-4 w-4" />
+                  <span>Add Device</span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add New Device</DialogTitle>
+                  <DialogDescription>
+                    Enter details for the new device in {room?.room_name}.
+                  </DialogDescription>
+                </DialogHeader>
+                
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <label htmlFor="device-name" className="text-sm font-medium">
+                      Device Name
+                    </label>
+                    <Input
+                      id="device-name"
+                      placeholder="Device name (e.g. Ceiling Light)"
+                      value={newDeviceName}
+                      onChange={(e) => setNewDeviceName(e.target.value)}
+                    />
+                  </div>
+                  
+                  <div className="grid gap-2">
+                    <label htmlFor="device-category" className="text-sm font-medium">
+                      Device Category
+                    </label>
+                    <Select 
+                      value={newDeviceCategory}
+                      onValueChange={setNewDeviceCategory}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {deviceCategories.map(category => (
+                          <SelectItem key={category} value={category}>
+                            {category}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 
-                <div className="grid gap-2">
-                  <label htmlFor="device-category" className="text-sm font-medium">
-                    Device Category
-                  </label>
-                  <Select 
-                    value={newDeviceCategory}
-                    onValueChange={setNewDeviceCategory}
+                <DialogFooter>
+                  <Button 
+                    type="submit" 
+                    onClick={addDevice}
+                    disabled={isAddingDevice || !newDeviceName.trim()}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {deviceCategories.map(category => (
-                        <SelectItem key={category} value={category}>
-                          {category}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              
-              <DialogFooter>
-                <Button 
-                  type="submit" 
-                  onClick={addDevice}
-                  disabled={isAddingDevice || !newDeviceName.trim()}
-                >
-                  {isAddingDevice ? (
-                    <>
-                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                      Adding...
-                    </>
-                  ) : "Add Device"}
+                    {isAddingDevice ? (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : "Add Device"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" variant="destructive" className="flex items-center gap-1">
+                  <Trash2 className="h-4 w-4" />
+                  <span className="hidden sm:inline">Delete Room</span>
                 </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-          
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button size="sm" variant="destructive" className="flex items-center gap-1">
-                <Trash2 className="h-4 w-4" />
-                <span className="hidden sm:inline">Delete Room</span>
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will delete the room "{room?.room_name}". All devices will be unlinked from this room.
-                  This action cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={deleteRoom}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  disabled={isDeletingRoom}
-                >
-                  {isDeletingRoom ? (
-                    <>
-                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                      Deleting...
-                    </>
-                  ) : "Delete"}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will delete the room "{room?.room_name}". All devices will be unlinked from this room.
+                    This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={deleteRoom}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    disabled={isDeletingRoom}
+                  >
+                    {isDeletingRoom ? (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                        Deleting...
+                      </>
+                    ) : "Delete"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        )}
       </div>
       
       {devices.length === 0 ? (
         <div className="glass-card p-8 rounded-xl text-center">
           <p className="text-muted-foreground mb-4">No devices added to this room yet</p>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button>Add Your First Device</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add New Device</DialogTitle>
-                <DialogDescription>
-                  Enter details for the new device in {room?.room_name}.
-                </DialogDescription>
-              </DialogHeader>
-              
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <label htmlFor="device-name" className="text-sm font-medium">
-                    Device Name
-                  </label>
-                  <Input
-                    id="device-name"
-                    placeholder="Device name (e.g. Ceiling Light)"
-                    value={newDeviceName}
-                    onChange={(e) => setNewDeviceName(e.target.value)}
-                  />
+          {isAdmin ? (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button>Add Your First Device</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add New Device</DialogTitle>
+                  <DialogDescription>
+                    Enter details for the new device in {room?.room_name}.
+                  </DialogDescription>
+                </DialogHeader>
+                
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <label htmlFor="device-name" className="text-sm font-medium">
+                      Device Name
+                    </label>
+                    <Input
+                      id="device-name"
+                      placeholder="Device name (e.g. Ceiling Light)"
+                      value={newDeviceName}
+                      onChange={(e) => setNewDeviceName(e.target.value)}
+                    />
+                  </div>
+                  
+                  <div className="grid gap-2">
+                    <label htmlFor="device-category" className="text-sm font-medium">
+                      Device Category
+                    </label>
+                    <Select 
+                      value={newDeviceCategory}
+                      onValueChange={setNewDeviceCategory}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {deviceCategories.map(category => (
+                          <SelectItem key={category} value={category}>
+                            {category}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 
-                <div className="grid gap-2">
-                  <label htmlFor="device-category" className="text-sm font-medium">
-                    Device Category
-                  </label>
-                  <Select 
-                    value={newDeviceCategory}
-                    onValueChange={setNewDeviceCategory}
+                <DialogFooter>
+                  <Button 
+                    type="submit" 
+                    onClick={addDevice}
+                    disabled={isAddingDevice || !newDeviceName.trim()}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {deviceCategories.map(category => (
-                        <SelectItem key={category} value={category}>
-                          {category}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              
-              <DialogFooter>
-                <Button 
-                  type="submit" 
-                  onClick={addDevice}
-                  disabled={isAddingDevice || !newDeviceName.trim()}
-                >
-                  {isAddingDevice ? (
-                    <>
-                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                      Adding...
-                    </>
-                  ) : "Add Device"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+                    {isAddingDevice ? (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : "Add Device"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          ) : (
+            <p>Please contact an administrator to add devices.</p>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 animate-fade-in">
@@ -460,6 +468,7 @@ const RoomDetail = () => {
               device={device} 
               canControl={canControlDevices && !panicMode}
               onDeleteDevice={deleteDevice}
+              isAdmin={isAdmin}
             />
           ))}
         </div>

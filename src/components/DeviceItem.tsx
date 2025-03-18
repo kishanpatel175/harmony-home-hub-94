@@ -30,12 +30,14 @@ interface DeviceItemProps {
   device: Device;
   canControl: boolean;
   onDeleteDevice: (deviceId: string) => void;
+  isAdmin: boolean;
 }
 
 const DeviceItem: React.FC<DeviceItemProps> = ({ 
   device, 
   canControl,
-  onDeleteDevice 
+  onDeleteDevice,
+  isAdmin
 }) => {
   const [status, setStatus] = useState<"ON" | "OFF">(device.device_status);
   const [isUpdating, setIsUpdating] = useState<boolean>(false);
@@ -228,21 +230,23 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
             )}
           />
           
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Device Options</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => onDeleteDevice(device.deviceId)}>
-                <Trash2 className="mr-2 h-4 w-4" />
-                <span>Delete Device</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {isAdmin && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Device Options</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => onDeleteDevice(device.deviceId)}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  <span>Delete Device</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
     </div>

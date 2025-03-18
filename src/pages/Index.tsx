@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, addDoc, serverTimestamp, query, orderBy, onSnapshot, doc } from "firebase/firestore";
@@ -14,6 +13,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import TestModeToggle from "@/components/TestModeToggle";
 import TestScanInput from "@/components/TestScanInput";
 import { deviceUpdateEvent, DEVICE_UPDATE_EVENT } from "@/components/PanicModeButton";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Dialog,
   DialogContent,
@@ -31,6 +31,7 @@ const Index = () => {
   const [newRoomName, setNewRoomName] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
   const [isTestMode, setIsTestMode] = useState(false);
+  const { isAdmin } = useAuth();
   
   const fetchRooms = async () => {
     try {
@@ -149,58 +150,13 @@ const Index = () => {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-medium">Rooms</h2>
         
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button size="sm" className="flex items-center gap-1">
-              <Plus className="h-4 w-4" />
-              <span>Add Room</span>
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add New Room</DialogTitle>
-              <DialogDescription>
-                Enter a name for the new room.
-              </DialogDescription>
-            </DialogHeader>
-            
-            <Input
-              placeholder="Room name (e.g. Living Room)"
-              value={newRoomName}
-              onChange={(e) => setNewRoomName(e.target.value)}
-              className="mt-4"
-            />
-            
-            <DialogFooter className="mt-4">
-              <Button 
-                type="submit" 
-                onClick={addRoom}
-                disabled={isAddingRoom || !newRoomName.trim()}
-              >
-                {isAddingRoom ? (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                    Adding...
-                  </>
-                ) : "Add Room"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-      
-      {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-32 bg-muted rounded-xl animate-pulse" />
-          ))}
-        </div>
-      ) : rooms.length === 0 ? (
-        <div className="glass-card p-8 rounded-xl text-center">
-          <p className="text-muted-foreground mb-4">No rooms added yet</p>
+        {isAdmin && (
           <Dialog>
             <DialogTrigger asChild>
-              <Button>Add Your First Room</Button>
+              <Button size="sm" className="flex items-center gap-1">
+                <Plus className="h-4 w-4" />
+                <span>Add Room</span>
+              </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -233,6 +189,57 @@ const Index = () => {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+        )}
+      </div>
+      
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-32 bg-muted rounded-xl animate-pulse" />
+          ))}
+        </div>
+      ) : rooms.length === 0 ? (
+        <div className="glass-card p-8 rounded-xl text-center">
+          <p className="text-muted-foreground mb-4">No rooms added yet</p>
+          {isAdmin ? (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button>Add Your First Room</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add New Room</DialogTitle>
+                  <DialogDescription>
+                    Enter a name for the new room.
+                  </DialogDescription>
+                </DialogHeader>
+                
+                <Input
+                  placeholder="Room name (e.g. Living Room)"
+                  value={newRoomName}
+                  onChange={(e) => setNewRoomName(e.target.value)}
+                  className="mt-4"
+                />
+                
+                <DialogFooter className="mt-4">
+                  <Button 
+                    type="submit" 
+                    onClick={addRoom}
+                    disabled={isAddingRoom || !newRoomName.trim()}
+                  >
+                    {isAddingRoom ? (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : "Add Room"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          ) : (
+            <p>Please contact an administrator to add rooms.</p>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 animate-fade-in">
