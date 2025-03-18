@@ -1,3 +1,4 @@
+
 import React, { createContext, useState, useEffect, useContext } from "react";
 import { 
   User, 
@@ -8,7 +9,7 @@ import {
   UserCredential,
   createUserWithEmailAndPassword
 } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { toast } from "@/components/ui/sonner";
 
@@ -57,18 +58,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             
             setCurrentUser(authUser);
           } else {
-            await setDoc(doc(db, "users", user.uid), {
-              email: user.email,
-              role: "normal",
-              createdAt: new Date()
-            });
-            
-            const authUser = {
-              ...user,
-              role: "normal" as UserRole
-            } as AuthUser;
-            
-            setCurrentUser(authUser);
+            // For your specific users, create documents if they don't exist
+            if (user.email === "kishanpatel1750@gmail.com") {
+              await setDoc(doc(db, "users", user.uid), {
+                email: user.email,
+                role: "admin",
+                createdAt: serverTimestamp()
+              });
+              
+              const authUser = {
+                ...user,
+                role: "admin" as UserRole
+              } as AuthUser;
+              
+              setCurrentUser(authUser);
+            } else if (user.email === "kishan6434@gmail.com") {
+              await setDoc(doc(db, "users", user.uid), {
+                email: user.email,
+                role: "normal",
+                createdAt: serverTimestamp()
+              });
+              
+              const authUser = {
+                ...user,
+                role: "normal" as UserRole
+              } as AuthUser;
+              
+              setCurrentUser(authUser);
+            } else {
+              // Default for any other user
+              await setDoc(doc(db, "users", user.uid), {
+                email: user.email,
+                role: "normal",
+                createdAt: serverTimestamp()
+              });
+              
+              const authUser = {
+                ...user,
+                role: "normal" as UserRole
+              } as AuthUser;
+              
+              setCurrentUser(authUser);
+            }
           }
         } catch (error) {
           console.error("Error fetching user data:", error);
@@ -136,7 +167,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await setDoc(doc(db, "users", newUser.uid), {
         email: newUser.email,
         role: role,
-        createdAt: new Date()
+        createdAt: serverTimestamp()
       });
 
       toast.success(`${role.charAt(0).toUpperCase() + role.slice(1)} user created successfully`);
