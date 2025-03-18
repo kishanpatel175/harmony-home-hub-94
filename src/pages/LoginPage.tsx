@@ -5,9 +5,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { LockIcon, HomeIcon } from "lucide-react";
+import { LockIcon } from "lucide-react";
 
 const LoginPage = () => {
   const [email, setEmail] = useState("");
@@ -20,7 +19,7 @@ const LoginPage = () => {
   // Get the destination from the location state, or default to home
   const from = (location.state as any)?.from?.pathname || "/";
 
-  const handleLogin = async (mode: "normal" | "admin") => {
+  const handleLogin = async () => {
     if (!email || !password) {
       return;
     }
@@ -46,103 +45,54 @@ const LoginPage = () => {
             Login to manage your home automation system
           </CardDescription>
         </CardHeader>
-        <Tabs defaultValue="normal" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="normal">Normal Mode</TabsTrigger>
-            <TabsTrigger value="admin">Admin Mode</TabsTrigger>
-          </TabsList>
-          <TabsContent value="normal">
-            <CardContent className="space-y-4 pt-4">
-              <div className="space-y-2">
-                <Label htmlFor="email-normal">Email</Label>
-                <Input
-                  id="email-normal"
-                  type="email"
-                  placeholder="your.email@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  disabled={isSubmitting}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password-normal">Password</Label>
-                <Input
-                  id="password-normal"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={isSubmitting}
-                />
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button 
-                className="w-full" 
-                onClick={() => handleLogin("normal")}
-                disabled={isSubmitting || !email || !password}
-              >
-                {isSubmitting ? (
-                  <>
-                    <span className="animate-spin mr-2">↻</span>
-                    Logging in...
-                  </>
-                ) : (
-                  <>
-                    <HomeIcon className="mr-2 h-4 w-4" />
-                    Login as User
-                  </>
-                )}
-              </Button>
-            </CardFooter>
-          </TabsContent>
-          <TabsContent value="admin">
-            <CardContent className="space-y-4 pt-4">
-              <div className="space-y-2">
-                <Label htmlFor="email-admin">Admin Email</Label>
-                <Input
-                  id="email-admin"
-                  type="email"
-                  placeholder="admin@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  disabled={isSubmitting}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password-admin">Admin Password</Label>
-                <Input
-                  id="password-admin"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={isSubmitting}
-                />
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button 
-                className="w-full" 
-                variant="destructive"
-                onClick={() => handleLogin("admin")}
-                disabled={isSubmitting || !email || !password}
-              >
-                {isSubmitting ? (
-                  <>
-                    <span className="animate-spin mr-2">↻</span>
-                    Logging in...
-                  </>
-                ) : (
-                  <>
-                    <LockIcon className="mr-2 h-4 w-4" />
-                    Login as Admin
-                  </>
-                )}
-              </Button>
-            </CardFooter>
-          </TabsContent>
-        </Tabs>
+        <CardContent className="space-y-4 pt-4">
+          <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="your.email@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={isSubmitting}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={isSubmitting}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleLogin();
+                }
+              }}
+            />
+          </div>
+        </CardContent>
+        <CardFooter>
+          <Button 
+            className="w-full" 
+            onClick={handleLogin}
+            disabled={isSubmitting || !email || !password}
+          >
+            {isSubmitting ? (
+              <>
+                <span className="animate-spin mr-2">↻</span>
+                Logging in...
+              </>
+            ) : (
+              <>
+                <LockIcon className="mr-2 h-4 w-4" />
+                Login
+              </>
+            )}
+          </Button>
+        </CardFooter>
       </Card>
     </div>
   );
