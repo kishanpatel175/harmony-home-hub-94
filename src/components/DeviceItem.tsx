@@ -2,7 +2,7 @@
 import { Device, CurrentPrivilegedUser } from "@/lib/types";
 import { useState, useEffect } from "react";
 import { 
-  Lightbulb, Fan, Tv, Lock, Refrigerator, Power, Trash2, MoreHorizontal, AlertTriangle 
+  Lightbulb, Fan, Tv, Lock, Refrigerator, Power, Trash2, MoreHorizontal, AlertTriangle, Users 
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -81,7 +81,7 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
           setIsAssigned(isDeviceAssigned);
           
           // Auto turn off unassigned devices when privileged user changes
-          if (!isDeviceAssigned && status === "ON") {
+          if (!isDeviceAssigned && status === "ON" && !isAdmin) {
             try {
               const deviceRef = doc(db, "devices", device.deviceId);
               await updateDoc(deviceRef, {
@@ -124,14 +124,16 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
       unsubscribePrivileged();
       deviceUpdateEvent.removeEventListener(DEVICE_UPDATE_EVENT, handleDeviceUpdate);
     };
-  }, [device]);
+  }, [device, isAdmin]);
 
   const toggleDevice = async () => {
-    // Fix: Remove status from dependency array to avoid old state
-    if (isUpdating || !canControl || panicMode) return;
+    // Check if control is allowed
+    if (isUpdating || !canControl || panicMode) {
+      return;
+    }
     
-    // If there's a privileged user and device is not assigned, don't allow toggling
-    if (privilegedUser && !isAssigned) {
+    // If there's a privileged user and device is not assigned, don't allow toggling for non-admin users
+    if (privilegedUser && !isAssigned && !isAdmin) {
       toast.error("Device not assigned to the current privileged user");
       return;
     }
@@ -184,11 +186,19 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
     }
   };
 
+  // Determine control restrictions
+  const isControlDisabled = !canControl || panicMode || isUpdating || (!isAdmin && privilegedUser && !isAssigned);
+  const controlRestrictionReason = !canControl ? 
+    "No members present in home" : 
+    (panicMode ? "Panic mode active" : 
+      (!isAdmin && privilegedUser && !isAssigned ? "Not assigned to privileged user" : ""));
+
   return (
     <div className={cn(
       "glass-card p-4 rounded-xl transition-standard",
       status === "ON" ? "bg-white/90" : "bg-white/60",
-      !isAssigned && privilegedUser ? "border-l-4 border-l-amber-400" : ""
+      !isAssigned && privilegedUser && !isAdmin ? "border-l-4 border-l-amber-400" : "",
+      !canControl && !isAdmin ? "border-l-4 border-l-amber-400" : ""
     )}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -206,27 +216,30 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
         </div>
         
         <div className="flex items-center gap-2">
-          {!isAssigned && privilegedUser ? (
+          {isControlDisabled && controlRestrictionReason && (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="flex items-center gap-1 mr-1 text-amber-500">
-                    <AlertTriangle className="w-4 h-4" />
+                    {!canControl && !isAdmin ? 
+                      <Users className="w-4 h-4" /> : 
+                      <AlertTriangle className="w-4 h-4" />
+                    }
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Not assigned to privileged user</p>
+                  <p>{controlRestrictionReason}</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-          ) : null}
+          )}
           
           <Switch 
             checked={status === "ON"} 
             onCheckedChange={toggleDevice}
-            disabled={!canControl || panicMode || isUpdating || (privilegedUser && !isAssigned)}
+            disabled={isControlDisabled}
             className={cn(
-              canControl && !panicMode && (isAssigned || !privilegedUser) ? "" : "opacity-50 cursor-not-allowed"
+              !isControlDisabled ? "" : "opacity-50 cursor-not-allowed"
             )}
           />
           

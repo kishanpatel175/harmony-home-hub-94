@@ -1,7 +1,7 @@
 
 import { Room, Device } from "@/lib/types";
 import { useState, useEffect, useCallback } from "react";
-import { Home, SquareDot, Sparkles } from "lucide-react";
+import { Home, SquareDot, Sparkles, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -10,14 +10,21 @@ import { deviceUpdateEvent, DEVICE_UPDATE_EVENT } from "./PanicModeButton";
 
 interface RoomCardProps {
   room: Room;
+  isAdmin?: boolean;
+  hasPresentMembers?: boolean;
 }
 
-const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
+const RoomCard: React.FC<RoomCardProps> = ({ 
+  room, 
+  isAdmin = false,
+  hasPresentMembers = true
+}) => {
   const [activeDevices, setActiveDevices] = useState<number>(0);
   const [totalDevices, setTotalDevices] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [hasAnimated, setHasAnimated] = useState<boolean>(false);
   const [forceUpdate, setForceUpdate] = useState<number>(0);
+  const canControl = isAdmin || hasPresentMembers;
 
   const fetchDevices = useCallback(async () => {
     try {
@@ -88,7 +95,8 @@ const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
     >
       <div className={cn(
         "neo-card p-4 rounded-xl h-full", 
-        activeDevices > 0 ? "border-l-4 border-l-primary" : ""
+        activeDevices > 0 ? "border-l-4 border-l-primary" : "",
+        !canControl && !isAdmin ? "border border-amber-400/30" : ""
       )}>
         <div className="flex flex-col h-full">
           <div className="flex justify-between items-start">
@@ -109,6 +117,13 @@ const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
               <Sparkles className="w-4 h-4 text-primary" />
             )}
           </div>
+          
+          {!canControl && !isAdmin && (
+            <div className="text-xs text-amber-500 flex items-center gap-1 mb-2">
+              <Users className="w-3 h-3" />
+              <span>Control disabled (no members present)</span>
+            </div>
+          )}
           
           {isLoading ? (
             <div className="h-4 w-16 bg-muted animate-pulse rounded mt-auto" />

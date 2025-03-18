@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { db } from "@/lib/firebase";
@@ -10,7 +9,7 @@ import { Room, Device, CurrentPrivilegedUser } from "@/lib/types";
 import DeviceItem from "@/components/DeviceItem";
 import { useAuth } from "@/contexts/AuthContext";
 import { 
-  ChevronLeft, Plus, RefreshCw, Trash2, AlertTriangle
+  ChevronLeft, Plus, RefreshCw, Trash2, AlertTriangle, UserRound, Users
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,6 +76,9 @@ const RoomDetail = () => {
   // Panic mode state
   const [panicMode, setPanicMode] = useState(false);
   
+  // Present members state
+  const [hasPresentMembers, setHasPresentMembers] = useState(false);
+  
   // Fetch room data
   useEffect(() => {
     const fetchRoom = async () => {
@@ -104,7 +106,7 @@ const RoomDetail = () => {
     fetchRoom();
   }, [roomId, navigate]);
   
-  // Listen for privileged user changes
+  // Listen for privileged user changes and present members
   useEffect(() => {
     const privilegedUserRef = doc(db, "current_most_privileged_user", "current");
     
@@ -113,12 +115,18 @@ const RoomDetail = () => {
         const data = doc.data() as CurrentPrivilegedUser;
         setPrivilegedUserId(data.current_most_privileged_user_id);
         
-        // Always allow control in this demo
-        setCanControlDevices(true);
+        // Only allow control if admin or if there is a privileged user (someone is home)
+        if (isAdmin) {
+          // Admin can always control devices regardless of presence
+          setCanControlDevices(true);
+        } else {
+          // Normal users can only control if someone is home (privileged user exists)
+          setCanControlDevices(!!data.current_most_privileged_user_id);
+        }
       } else {
         setPrivilegedUserId(null);
-        // No one is home, but we'll still allow control in this demo
-        setCanControlDevices(true);
+        // Only admin can control when no one is home
+        setCanControlDevices(isAdmin);
       }
     });
     
@@ -131,11 +139,24 @@ const RoomDetail = () => {
       }
     });
     
+    // Listen for present members
+    const presentMembersRef = collection(db, "present_scan");
+    const unsubscribePresentMembers = onSnapshot(presentMembersRef, (snapshot) => {
+      const hasMembers = !snapshot.empty;
+      setHasPresentMembers(hasMembers);
+      
+      // If not admin, control ability depends on members being present
+      if (!isAdmin) {
+        setCanControlDevices(hasMembers);
+      }
+    });
+    
     return () => {
       unsubscribePrivileged();
       unsubscribePanic();
+      unsubscribePresentMembers();
     };
-  }, []);
+  }, [isAdmin]);
   
   // Fetch devices in this room
   useEffect(() => {
@@ -277,6 +298,16 @@ const RoomDetail = () => {
           <div>
             <p className="font-medium">Panic Mode Active</p>
             <p className="text-sm text-destructive/80">All door locks are open and devices are turned off</p>
+          </div>
+        </div>
+      )}
+      
+      {!isAdmin && !hasPresentMembers && (
+        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl p-4 mb-6 flex items-center gap-3">
+          <Users className="h-5 w-5 flex-shrink-0" />
+          <div>
+            <p className="font-medium">No members present</p>
+            <p className="text-sm text-amber-600/80 dark:text-amber-400/80">Device control is disabled until someone enters the home</p>
           </div>
         </div>
       )}
@@ -478,3 +509,5 @@ const RoomDetail = () => {
 };
 
 export default RoomDetail;
+
+

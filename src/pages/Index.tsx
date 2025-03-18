@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, addDoc, serverTimestamp, query, orderBy, onSnapshot, doc } from "firebase/firestore";
@@ -5,7 +6,7 @@ import { Room } from "@/lib/types";
 import RoomCard from "@/components/RoomCard";
 import PanicModeButton from "@/components/PanicModeButton";
 import StatusDisplay from "@/components/StatusDisplay";
-import { Plus, RefreshCw, LayoutDashboard } from "lucide-react";
+import { Plus, RefreshCw, LayoutDashboard, Users, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/sonner";
@@ -31,6 +32,7 @@ const Index = () => {
   const [newRoomName, setNewRoomName] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
   const [isTestMode, setIsTestMode] = useState(false);
+  const [hasPresentMembers, setHasPresentMembers] = useState(false);
   const { isAdmin } = useAuth();
   
   const fetchRooms = async () => {
@@ -78,6 +80,16 @@ const Index = () => {
       if (doc.exists()) {
         setIsTestMode(doc.data().is_test_mode || false);
       }
+    });
+    
+    return () => unsubscribe();
+  }, []);
+  
+  // Listen for present members
+  useEffect(() => {
+    const presentMembersRef = collection(db, "present_scan");
+    const unsubscribe = onSnapshot(presentMembersRef, (snapshot) => {
+      setHasPresentMembers(!snapshot.empty);
     });
     
     return () => unsubscribe();
@@ -146,6 +158,16 @@ const Index = () => {
       <div className="mb-6">
         <PanicModeButton />
       </div>
+      
+      {!isAdmin && !hasPresentMembers && (
+        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl p-4 mb-6 flex items-center gap-3">
+          <Users className="h-5 w-5 flex-shrink-0" />
+          <div>
+            <p className="font-medium">No members present</p>
+            <p className="text-sm text-amber-600/80 dark:text-amber-400/80">Device control is disabled until someone enters the home</p>
+          </div>
+        </div>
+      )}
       
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-medium">Rooms</h2>
@@ -244,7 +266,12 @@ const Index = () => {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 animate-fade-in">
           {rooms.map((room) => (
-            <RoomCard key={room.roomId} room={room} />
+            <RoomCard 
+              key={room.roomId} 
+              room={room} 
+              isAdmin={isAdmin}
+              hasPresentMembers={hasPresentMembers}
+            />
           ))}
         </div>
       )}
