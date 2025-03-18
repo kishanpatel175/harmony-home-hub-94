@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Save, RefreshCw } from "lucide-react";
+import { ArrowLeft, Save, RefreshCw, UserPlus } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const UserManagementPage = () => {
@@ -71,12 +71,21 @@ const UserManagementPage = () => {
 
   return (
     <div className="container mx-auto px-4 py-12 pb-20">
-      <Button asChild className="mb-6">
-        <Link to="/">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Home
-        </Link>
-      </Button>
+      <div className="flex justify-between items-center mb-6">
+        <Button asChild>
+          <Link to="/">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Home
+          </Link>
+        </Button>
+        
+        <Button asChild variant="outline">
+          <Link to="/create-user">
+            <UserPlus className="mr-2 h-4 w-4" />
+            Create New User
+          </Link>
+        </Button>
+      </div>
       
       <Card className="max-w-md mx-auto">
         <CardHeader>

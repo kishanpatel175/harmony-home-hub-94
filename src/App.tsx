@@ -10,6 +10,7 @@ import NotFound from "./pages/NotFound";
 import RoomDetail from "./pages/RoomDetail";
 import MembersPage from "./pages/MembersPage";
 import UserManagementPage from "./pages/UserManagementPage";
+import UserCreationPage from "./pages/UserCreationPage";
 import Navigation from "./components/Navigation";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { useEffect, useState, useRef } from "react";
@@ -254,6 +255,12 @@ const App = () => {
                     <Route path="/users" element={
                       <ProtectedRoute requireAdmin={true}>
                         <UserManagementPage />
+                      </ProtectedRoute>
+                    } />
+
+                    <Route path="/create-user" element={
+                      <ProtectedRoute requireAdmin={true}>
+                        <UserCreationPage />
                       </ProtectedRoute>
                     } />
                     

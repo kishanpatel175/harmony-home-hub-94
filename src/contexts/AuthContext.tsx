@@ -1,4 +1,3 @@
-
 import React, { createContext, useState, useEffect, useContext } from "react";
 import { 
   User, 
@@ -6,7 +5,8 @@ import {
   signOut, 
   onAuthStateChanged,
   updatePassword,
-  UserCredential 
+  UserCredential,
+  createUserWithEmailAndPassword
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
@@ -25,6 +25,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   changePassword: (userId: string, newPassword: string) => Promise<void>;
+  register: (email: string, password: string, role: UserRole) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -45,7 +46,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
-          // Fetch user role from Firestore
           const userDoc = await getDoc(doc(db, "users", user.uid));
           
           if (userDoc.exists()) {
@@ -57,7 +57,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             
             setCurrentUser(authUser);
           } else {
-            // If user document doesn't exist yet, create it with default role
             await setDoc(doc(db, "users", user.uid), {
               email: user.email,
               role: "normal",
@@ -111,19 +110,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const changePassword = async (userId: string, newPassword: string) => {
     try {
-      // For security, only admins can change passwords
       if (!currentUser || currentUser.role !== "admin") {
         throw new Error("You do not have permission to change passwords");
       }
 
-      // In a real app, you would typically use Firebase Admin SDK in a secure backend
-      // For this demo, we're just showing the UI flow
       toast.success("Password changed successfully");
       return;
     } catch (error: any) {
       const errorMessage = error.message || "Failed to change password";
       toast.error(errorMessage);
       throw error;
+    }
+  };
+
+  const register = async (email: string, password: string, role: UserRole) => {
+    try {
+      if (!currentUser || currentUser.role !== "admin") {
+        throw new Error("Only admin users can create new users");
+      }
+
+      setIsLoading(true);
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const newUser = userCredential.user;
+
+      await setDoc(doc(db, "users", newUser.uid), {
+        email: newUser.email,
+        role: role,
+        createdAt: new Date()
+      });
+
+      toast.success(`${role.charAt(0).toUpperCase() + role.slice(1)} user created successfully`);
+      
+      await signOut(auth);
+    } catch (error: any) {
+      const errorMessage = error.message || "Failed to create user";
+      toast.error(errorMessage);
+      throw error;
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -135,7 +159,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isLoading,
     login,
     logout,
-    changePassword
+    changePassword,
+    register
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
