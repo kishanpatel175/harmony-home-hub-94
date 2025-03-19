@@ -1,3 +1,6 @@
+In this project , admin can manage the roles and accesscontrol of every user and can also assign the devices to particular role , and in normal mode (normal user) will be able to control only the assigned devices 
+also privileges of currunt user will be automatically updating according to the most prilelege user present in home curruntly
+
 
 **Use your preferred IDE**
 
