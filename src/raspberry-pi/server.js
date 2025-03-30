@@ -1,8 +1,8 @@
-
 const express = require('express');
 const admin = require('firebase-admin');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 let Gpio;
 
 // Try to load the onoff module, but provide a fallback if not available
@@ -90,6 +90,38 @@ try {
 
 const db = admin.firestore();
 
+// Check if we have permission to access GPIO
+const checkGpioPermissions = () => {
+  try {
+    // Check if /sys/class/gpio exists and is accessible
+    const gpioPath = '/sys/class/gpio';
+    if (!fs.existsSync(gpioPath)) {
+      console.warn('GPIO directory not found. Make sure you are running on a Raspberry Pi.');
+      return false;
+    }
+    
+    // Try to write to export (this will fail if no permission)
+    try {
+      fs.accessSync(gpioPath + '/export', fs.constants.W_OK);
+      return true;
+    } catch (e) {
+      console.warn('No write permission to GPIO. You may need to run with sudo.');
+      return false;
+    }
+  } catch (error) {
+    console.warn('Error checking GPIO permissions:', error);
+    return false;
+  }
+};
+
+const hasGpioPermission = checkGpioPermissions();
+if (!hasGpioPermission) {
+  console.warn('----------------------------');
+  console.warn('WARNING: GPIO access requires higher permissions.');
+  console.warn('Try running the server with sudo: sudo npm start');
+  console.warn('----------------------------');
+}
+
 // Helper function to convert physical pin to GPIO number
 const physicalToGPIO = (physicalPin) => {
   const gpioNumber = PHYSICAL_TO_GPIO[physicalPin];
@@ -100,7 +132,7 @@ const physicalToGPIO = (physicalPin) => {
   return gpioNumber;
 };
 
-// Helper function to setup GPIO pins
+// Helper function to setup GPIO pins with improved error handling
 const setupGpioPin = (pinNumber, initialState) => {
   try {
     // Convert physical pin number to GPIO number
@@ -118,16 +150,38 @@ const setupGpioPin = (pinNumber, initialState) => {
     }
     
     // Create new GPIO pin with OUTPUT direction
-    const pin = new Gpio(gpioNumber, 'out');
+    let pin;
+    try {
+      pin = new Gpio(gpioNumber, 'out');
+    } catch (error) {
+      console.error(`Error creating GPIO instance for pin ${pinNumber} (GPIO ${gpioNumber}):`, error.message);
+      
+      if (error.code === 'EACCES' || error.message.includes('permission')) {
+        console.error(`Permission denied for GPIO ${gpioNumber}. Run with sudo or check GPIO permissions.`);
+        console.error(`Try running: sudo chmod -R 777 /sys/class/gpio`);
+      }
+      
+      // Use a mock pin if we can't initialize the real one
+      console.log(`Using simulated GPIO for pin ${pinNumber} (GPIO ${gpioNumber})`);
+      pin = new MockGpio(gpioNumber, 'out');
+    }
     
     // Set initial state (1 for ON, 0 for OFF)
     const pinValue = initialState === 'ON' ? 1 : 0;
-    pin.writeSync(pinValue);
     
-    // Store pin in active pins map
+    try {
+      pin.writeSync(pinValue);
+      console.log(`[PIN CHANGE] Physical pin ${pinNumber} (GPIO ${gpioNumber}) set to ${pinValue} (${initialState})`);
+    } catch (error) {
+      console.error(`Error writing to GPIO pin ${pinNumber} (GPIO ${gpioNumber}):`, error.message);
+      if (error.code === 'EACCES' || error.message.includes('permission')) {
+        console.error(`Permission denied writing to GPIO ${gpioNumber}. Run with sudo.`);
+      }
+    }
+    
+    // Store pin in active pins map - even if it's a mock
     activePins[pinNumber] = pin;
     
-    console.log(`[PIN CHANGE] Physical pin ${pinNumber} (GPIO ${gpioNumber}) set to ${pinValue} (${initialState})`);
     return true;
   } catch (error) {
     console.error(`Error setting up GPIO pin ${pinNumber}:`, error);
@@ -175,11 +229,30 @@ app.get('/api/check-connection', async (req, res) => {
   try {
     // Test connection to Firebase
     await db.collection('devices').limit(1).get();
-    res.json({ status: 'connected' });
+    res.json({ status: 'connected', gpio_permission: hasGpioPermission });
   } catch (error) {
     console.error('Firebase connection error:', error);
     res.status(500).json({ status: 'disconnected', error: error.message });
   }
+});
+
+app.get('/api/gpio-status', (req, res) => {
+  const pinStatus = [];
+  
+  Object.entries(activePins).forEach(([physicalPin, pin]) => {
+    const gpioNumber = PHYSICAL_TO_GPIO[physicalPin];
+    pinStatus.push({
+      physical_pin: physicalPin,
+      gpio: gpioNumber,
+      value: pin.value,
+      status: pin.value === 1 ? 'ON' : 'OFF'
+    });
+  });
+  
+  res.json({
+    has_permission: hasGpioPermission,
+    active_pins: pinStatus
+  });
 });
 
 app.get('/api/devices', async (req, res) => {
@@ -433,4 +506,44 @@ app.listen(port, () => {
   console.log(`Access the dashboard at http://localhost:${port}`);
   console.log('GPIO control ' + (Gpio.prototype.hasOwnProperty('unexport') ? 'is ENABLED' : 'is SIMULATED'));
   console.log('Physical-to-GPIO mapping is active. Using physical pin numbers in the configuration.');
+});
+
+app.post('/api/test-pin', async (req, res) => {
+  try {
+    const { pin } = req.body;
+    
+    if (!pin) {
+      return res.status(400).json({ success: false, error: 'Pin is required' });
+    }
+    
+    if (!/^\d+$/.test(pin)) {
+      return res.status(400).json({ success: false, error: 'Pin must contain only digits' });
+    }
+    
+    // Check if pin is valid (maps to a GPIO)
+    if (!PHYSICAL_TO_GPIO[pin]) {
+      return res.status(400).json({ 
+        success: false, 
+        error: `Invalid physical pin number ${pin}. Must be one of: ${Object.keys(PHYSICAL_TO_GPIO).join(', ')}` 
+      });
+    }
+    
+    // Set pin to ON for 1 second, then turn it OFF
+    const setupSuccess = setupGpioPin(pin, 'ON');
+    
+    if (setupSuccess) {
+      setTimeout(() => {
+        setupGpioPin(pin, 'OFF');
+        console.log(`Test completed for pin ${pin}, turned OFF`);
+      }, 1000);
+    }
+    
+    res.json({ 
+      success: setupSuccess, 
+      message: setupSuccess ? `Pin ${pin} set to ON temporarily` : `Failed to set pin ${pin}`
+    });
+  } catch (error) {
+    console.error('Error testing pin:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
 });

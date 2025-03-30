@@ -29,8 +29,10 @@ This server runs on a Raspberry Pi and connects to Firebase to control your home
 
 4. Start the server:
    ```bash
-   npm start
+   sudo npm start
    ```
+
+   > **Important**: Running with `sudo` is recommended for GPIO access. If you don't use sudo, you might see permissions errors when accessing GPIO pins.
 
 5. Access the web interface:
    - Open a browser on your Raspberry Pi or any device on the same network
@@ -114,14 +116,41 @@ To verify that your GPIO pins are working correctly:
 
 4. If you change a device status in the web interface, check that the corresponding log appears showing the pin state change
 
+5. Use the "Test Pin" feature in the web interface to toggle a specific pin ON and OFF for testing
+
 ### Troubleshooting
+
+#### GPIO Permission Issues
+
+The most common issue is permissions for GPIO access. If you see errors like `EINVAL: invalid argument, write`, try these solutions:
+
+1. **Run the server with sudo** (recommended method):
+   ```bash
+   sudo npm start
+   ```
+
+2. **Change GPIO permissions** (alternative solution):
+   ```bash
+   sudo chmod -R 777 /sys/class/gpio
+   ```
+   Then restart the server with regular permissions:
+   ```bash
+   npm start
+   ```
+
+3. **Add your user to the gpio group** (permanent solution):
+   ```bash
+   sudo usermod -a -G gpio $USER
+   ```
+   You'll need to log out and back in for this to take effect.
+
+#### Other Common Issues
 
 - If you see connection errors, verify that your `serviceAccountKey.json` is valid
 - Make sure your Raspberry Pi has internet access to connect to Firebase
-- If you encounter issues with GPIO control, ensure you're running as a user with GPIO access permissions (typically the 'pi' user)
-- For GPIO permission issues, you may need to run the server with sudo: `sudo npm start`
-- If you see "Error setting up GPIO pin" messages, check that the physical pin number is valid and that you have permission to access GPIO
-- For deeper debugging, set the environment variable `DEBUG=1` when running: `DEBUG=1 npm start`
+- If you see "Error setting up GPIO pin" messages but the server continues running, the app will use simulated GPIO (mock mode)
+- For deeper debugging, set the environment variable `DEBUG=1` when running: `DEBUG=1 sudo npm start`
+- If specific pins are not working, verify they are not being used by other processes
 
 ### Automatic Startup
 
@@ -144,11 +173,13 @@ To make the server start automatically when your Raspberry Pi boots:
    StandardOutput=inherit
    StandardError=inherit
    Restart=always
-   User=pi
+   User=root
 
    [Install]
    WantedBy=multi-user.target
    ```
+
+   > **Note**: We're setting User=root here to ensure GPIO access permissions. If you prefer not to run as root, you'll need to follow the GPIO permission steps in the troubleshooting section.
 
 3. Enable and start the service:
    ```bash
@@ -160,3 +191,14 @@ To make the server start automatically when your Raspberry Pi boots:
    ```bash
    sudo systemctl status home-automation.service
    ```
+
+### Testing GPIO Pins
+
+The server includes a test endpoint that allows you to temporarily activate any GPIO pin to verify it's working:
+
+1. Use the "Test Pin" feature in the web interface
+2. Or send a POST request to `/api/test-pin` with JSON body `{"pin": "11"}` (replace 11 with your desired physical pin)
+3. The pin will turn ON for 1 second, then turn OFF
+4. Check the server console for confirmation that the test was executed
+
+This test function is useful for verifying hardware connections without changing device status in Firebase.
