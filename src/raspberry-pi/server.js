@@ -1,3 +1,4 @@
+
 const express = require('express');
 const admin = require('firebase-admin');
 const cors = require('cors');
@@ -35,6 +36,40 @@ const port = process.env.PORT || 3000;
 
 const activePins = {};
 
+// Mapping between physical pin numbers and GPIO numbers
+// Key: physical pin number, Value: BCM GPIO number
+const PHYSICAL_TO_GPIO = {
+  // Physical : GPIO
+  '3': 2,
+  '5': 3,
+  '7': 4,
+  '8': 14,
+  '10': 15,
+  '11': 17,
+  '12': 18,
+  '13': 27,
+  '15': 22,
+  '16': 23,
+  '18': 24,
+  '19': 10,
+  '21': 9,
+  '22': 25,
+  '23': 11,
+  '24': 8,
+  '26': 7,
+  '27': 0,
+  '28': 1,
+  '29': 5,
+  '31': 6,
+  '32': 12,
+  '33': 13,
+  '35': 19,
+  '36': 16,
+  '37': 26,
+  '38': 20,
+  '40': 21
+};
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -55,16 +90,36 @@ try {
 
 const db = admin.firestore();
 
+// Helper function to convert physical pin to GPIO number
+const physicalToGPIO = (physicalPin) => {
+  const gpioNumber = PHYSICAL_TO_GPIO[physicalPin];
+  if (gpioNumber === undefined) {
+    console.error(`Invalid physical pin number: ${physicalPin}. No corresponding GPIO.`);
+    return null;
+  }
+  return gpioNumber;
+};
+
 // Helper function to setup GPIO pins
 const setupGpioPin = (pinNumber, initialState) => {
   try {
+    // Convert physical pin number to GPIO number
+    const gpioNumber = physicalToGPIO(pinNumber);
+    
+    if (gpioNumber === null) {
+      console.warn(`Skipping setup for invalid pin ${pinNumber}`);
+      return false;
+    }
+    
+    console.log(`Setting up physical pin ${pinNumber} (GPIO ${gpioNumber}) with state: ${initialState}`);
+    
     // Clean up if pin was already initialized
     if (activePins[pinNumber]) {
       activePins[pinNumber].unexport();
     }
     
     // Create new GPIO pin with OUTPUT direction
-    const pin = new Gpio(parseInt(pinNumber), 'out');
+    const pin = new Gpio(gpioNumber, 'out');
     
     // Set initial state (1 for ON, 0 for OFF)
     pin.writeSync(initialState === 'ON' ? 1 : 0);
@@ -72,7 +127,7 @@ const setupGpioPin = (pinNumber, initialState) => {
     // Store pin in active pins map
     activePins[pinNumber] = pin;
     
-    console.log(`GPIO pin ${pinNumber} set up with state: ${initialState}`);
+    console.log(`GPIO pin ${gpioNumber} set up with state: ${initialState}`);
     return true;
   } catch (error) {
     console.error(`Error setting up GPIO pin ${pinNumber}:`, error);
@@ -172,6 +227,14 @@ app.post('/api/devices/:deviceId/update-pin', async (req, res) => {
     
     if (!/^\d+$/.test(pin)) {
       return res.status(400).json({ success: false, error: 'Pin must contain only digits' });
+    }
+    
+    // Check if pin is valid (maps to a GPIO)
+    if (!PHYSICAL_TO_GPIO[pin]) {
+      return res.status(400).json({ 
+        success: false, 
+        error: `Invalid physical pin number ${pin}. Must be one of: ${Object.keys(PHYSICAL_TO_GPIO).join(', ')}` 
+      });
     }
     
     const deviceRef = db.collection('devices').doc(deviceId);

@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from "react";
 import { db } from "@/lib/firebase";
 import { collection, query, getDocs, doc, getDoc, updateDoc, onSnapshot } from "firebase/firestore";
@@ -17,11 +18,25 @@ import {
   UserCheck, 
   Cpu, 
   AlertTriangle,
-  Save
+  Save,
+  Info
 } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+// Valid physical pin numbers that map to GPIO pins
+const VALID_PIN_NUMBERS = [
+  '3', '5', '7', '8', '10', '11', '12', '13', '15', '16', '18', '19', 
+  '21', '22', '23', '24', '26', '27', '28', '29', '31', '32', '33', 
+  '35', '36', '37', '38', '40'
+];
 
 const RaspberryPiInterface = () => {
   // Firebase connection status
@@ -44,6 +59,7 @@ const RaspberryPiInterface = () => {
   // Pin edit state
   const [editingPins, setEditingPins] = useState<Record<string, string>>({});
   const [savingPins, setSavingPins] = useState<Record<string, boolean>>({});
+  const [pinErrors, setPinErrors] = useState<Record<string, string>>({});
 
   // Live refresh state
   const [liveRefreshEnabled, setLiveRefreshEnabled] = useState(false);
@@ -264,12 +280,26 @@ const RaspberryPiInterface = () => {
     }
   }, [isConnected, fetchPanicMode, panicRefreshKey]);
 
+  // Validate pin number
+  const validatePin = (pin: string): boolean => {
+    return VALID_PIN_NUMBERS.includes(pin);
+  };
+
   // Handle pin input change
   const handlePinChange = (deviceId: string, value: string) => {
     setEditingPins(prev => ({
       ...prev,
       [deviceId]: value
     }));
+    
+    // Clear any existing error when user starts typing
+    if (pinErrors[deviceId]) {
+      setPinErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[deviceId];
+        return newErrors;
+      });
+    }
   };
 
   // Save pin to Firebase
@@ -283,13 +313,31 @@ const RaspberryPiInterface = () => {
     const newPin = editingPins[deviceId]?.trim();
     
     if (!newPin) {
+      setPinErrors(prev => ({
+        ...prev,
+        [deviceId]: "Pin cannot be empty"
+      }));
       toast.error("Pin cannot be empty");
       return;
     }
     
     // Pin should only contain digits
     if (!/^\d+$/.test(newPin)) {
+      setPinErrors(prev => ({
+        ...prev,
+        [deviceId]: "Pin must contain only digits"
+      }));
       toast.error("Pin must contain only digits");
+      return;
+    }
+    
+    // Validate pin number is in the allowed list
+    if (!validatePin(newPin)) {
+      setPinErrors(prev => ({
+        ...prev,
+        [deviceId]: `Invalid pin number. Must be one of: ${VALID_PIN_NUMBERS.join(', ')}`
+      }));
+      toast.error(`Invalid physical pin. Must be one of: ${VALID_PIN_NUMBERS.join(', ')}`);
       return;
     }
     
@@ -298,6 +346,13 @@ const RaspberryPiInterface = () => {
       
       await updateDoc(doc(db, "devices", deviceId), {
         pin: newPin
+      });
+      
+      // Clear any errors
+      setPinErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[deviceId];
+        return newErrors;
       });
       
       toast.success("Pin updated successfully");
@@ -401,6 +456,25 @@ const RaspberryPiInterface = () => {
                 </div>
               ) : (
                 <div className="space-y-4">
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-3 dark:bg-amber-950/20 dark:border-amber-800">
+                    <Info className="text-amber-500 dark:text-amber-400 h-5 w-5 flex-shrink-0" />
+                    <div className="text-sm">
+                      <span className="font-medium">Note:</span> Enter the physical pin number (3-40), not the GPIO number.
+                      <span className="block mt-1">
+                        <Button variant="link" className="h-auto p-0 text-xs" asChild>
+                          <a 
+                            href="https://pinout.xyz/" 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-amber-600 dark:text-amber-400"
+                          >
+                            View Raspberry Pi pinout diagram
+                          </a>
+                        </Button>
+                      </span>
+                    </div>
+                  </div>
+                  
                   {devices.map((device) => (
                     <div key={device.id} className="border rounded-lg p-4 space-y-3">
                       <div className="flex items-center justify-between">
@@ -420,25 +494,40 @@ const RaspberryPiInterface = () => {
                         </div>
                       </div>
                       
-                      <div className="flex items-center gap-2">
-                        <Input
-                          className="flex-1"
-                          placeholder="Pin Number"
-                          value={editingPins[device.id] || ""}
-                          onChange={(e) => handlePinChange(device.id, e.target.value)}
-                        />
-                        <Button 
-                          onClick={() => savePin(device.id)}
-                          disabled={savingPins[device.id]}
-                          size="sm"
-                        >
-                          {savingPins[device.id] ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Save className="w-4 h-4 mr-1" />
-                          )}
-                          Save Pin
-                        </Button>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Input
+                            className={cn("flex-1", pinErrors[device.id] && "border-red-500")}
+                            placeholder="Physical Pin Number (3-40)"
+                            value={editingPins[device.id] || ""}
+                            onChange={(e) => handlePinChange(device.id, e.target.value)}
+                          />
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button 
+                                  onClick={() => savePin(device.id)}
+                                  disabled={savingPins[device.id]}
+                                  size="sm"
+                                >
+                                  {savingPins[device.id] ? (
+                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Save className="w-4 h-4 mr-1" />
+                                  )}
+                                  Save Pin
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Valid pins: {VALID_PIN_NUMBERS.join(', ')}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                        
+                        {pinErrors[device.id] && (
+                          <p className="text-xs text-red-500">{pinErrors[device.id]}</p>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -586,6 +675,14 @@ const RaspberryPiInterface = () => {
               </div>
               
               <div className="space-y-2">
+                <h3 className="font-medium">Pin Number Format</h3>
+                <p className="text-sm text-muted-foreground">
+                  Use the physical pin numbers (3-40) as labeled on the Raspberry Pi board, not the GPIO numbers.
+                  Valid pin numbers: {VALID_PIN_NUMBERS.join(', ')}
+                </p>
+              </div>
+              
+              <div className="space-y-2">
                 <h3 className="font-medium">Live Refresh Mode</h3>
                 <p className="text-sm text-muted-foreground">
                   When Live Refresh is turned on, the dashboard will automatically update every 5 seconds with the latest data from Firebase.
@@ -598,14 +695,6 @@ const RaspberryPiInterface = () => {
                 <p className="text-sm text-muted-foreground">
                   Each panel has a refresh button in the top-right corner that allows you to update just that section.
                   These buttons are disabled when Live Refresh is active.
-                </p>
-              </div>
-              
-              <div className="space-y-2">
-                <h3 className="font-medium">Pin Number Management</h3>
-                <p className="text-sm text-muted-foreground">
-                  You can update the GPIO pin numbers for devices by entering a new pin value and clicking the Save button.
-                  Live Refresh will automatically pause when saving to prevent conflicts.
                 </p>
               </div>
             </CardContent>
