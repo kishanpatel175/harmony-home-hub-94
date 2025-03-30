@@ -1,10 +1,12 @@
-
 const express = require('express');
 const admin = require('firebase-admin');
 const cors = require('cors');
 const path = require('path');
+const Gpio = require('onoff').Gpio;
 const app = express();
 const port = process.env.PORT || 3000;
+
+const activePins = {};
 
 // Middleware
 app.use(cors());
@@ -25,6 +27,63 @@ try {
 }
 
 const db = admin.firestore();
+
+// Helper function to setup GPIO pins
+const setupGpioPin = (pinNumber, initialState) => {
+  try {
+    // Clean up if pin was already initialized
+    if (activePins[pinNumber]) {
+      activePins[pinNumber].unexport();
+    }
+    
+    // Create new GPIO pin with OUTPUT direction
+    const pin = new Gpio(parseInt(pinNumber), 'out');
+    
+    // Set initial state (1 for ON, 0 for OFF)
+    pin.writeSync(initialState === 'ON' ? 1 : 0);
+    
+    // Store pin in active pins map
+    activePins[pinNumber] = pin;
+    
+    console.log(`GPIO pin ${pinNumber} set up with state: ${initialState}`);
+    return true;
+  } catch (error) {
+    console.error(`Error setting up GPIO pin ${pinNumber}:`, error);
+    return false;
+  }
+};
+
+// Set up device status listener for real-time updates
+const setupDeviceListeners = async () => {
+  try {
+    // First get all devices to set up initial pins
+    const devicesRef = db.collection('devices');
+    const snapshot = await devicesRef.get();
+    
+    snapshot.forEach(doc => {
+      const device = doc.data();
+      if (device.pin) {
+        setupGpioPin(device.pin, device.device_status);
+      }
+    });
+    
+    // Then listen for changes
+    devicesRef.onSnapshot(snapshot => {
+      snapshot.docChanges().forEach(change => {
+        const device = change.doc.data();
+        if (device.pin) {
+          if (change.type === 'modified') {
+            setupGpioPin(device.pin, device.device_status);
+          }
+        }
+      });
+    });
+    
+    console.log('Device listeners set up successfully');
+  } catch (error) {
+    console.error('Error setting up device listeners:', error);
+  }
+};
 
 // API Endpoints
 app.get('/api/check-connection', async (req, res) => {
@@ -89,12 +148,59 @@ app.post('/api/devices/:deviceId/update-pin', async (req, res) => {
     }
     
     const deviceRef = db.collection('devices').doc(deviceId);
+    const deviceDoc = await deviceRef.get();
+    
+    if (!deviceDoc.exists) {
+      return res.status(404).json({ success: false, error: 'Device not found' });
+    }
+    
+    const device = deviceDoc.data();
+    
+    // Update pin in Firestore
     await deviceRef.update({ pin });
     
+    // Set up GPIO pin with current device status
+    const setupSuccess = setupGpioPin(pin, device.device_status);
+    
     console.log(`Updated pin for device ${deviceId} to ${pin}`);
-    res.json({ success: true });
+    res.json({ success: true, gpioSetup: setupSuccess });
   } catch (error) {
     console.error('Error updating pin:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/devices/:deviceId/update-status', async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    const { status } = req.body;
+    
+    if (!status || (status !== 'ON' && status !== 'OFF')) {
+      return res.status(400).json({ success: false, error: 'Valid status (ON/OFF) is required' });
+    }
+    
+    const deviceRef = db.collection('devices').doc(deviceId);
+    const deviceDoc = await deviceRef.get();
+    
+    if (!deviceDoc.exists) {
+      return res.status(404).json({ success: false, error: 'Device not found' });
+    }
+    
+    const device = deviceDoc.data();
+    
+    // Update status in Firestore
+    await deviceRef.update({ device_status: status });
+    
+    // Update GPIO pin if available
+    let gpioSetup = false;
+    if (device.pin) {
+      gpioSetup = setupGpioPin(device.pin, status);
+    }
+    
+    console.log(`Updated status for device ${deviceId} to ${status}`);
+    res.json({ success: true, gpioSetup });
+  } catch (error) {
+    console.error('Error updating device status:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -150,9 +256,62 @@ app.get('/api/panic-mode', async (req, res) => {
   }
 });
 
+// Listen for panic mode changes and update all GPIO pins
+db.collection('panic_mode').doc('current')
+  .onSnapshot(async doc => {
+    if (doc.exists) {
+      const panicMode = doc.data();
+      
+      if (panicMode.is_panic_mode) {
+        console.log('Panic mode activated! Turning off all devices...');
+        
+        // Get all devices
+        const devicesRef = db.collection('devices');
+        const snapshot = await devicesRef.get();
+        
+        // Update all devices to OFF status
+        const batch = db.batch();
+        
+        snapshot.forEach(doc => {
+          const deviceRef = devicesRef.doc(doc.id);
+          batch.update(deviceRef, { device_status: 'OFF' });
+          
+          // Turn off GPIO pins
+          const device = doc.data();
+          if (device.pin && activePins[device.pin]) {
+            activePins[device.pin].writeSync(0); // Turn off
+          }
+        });
+        
+        await batch.commit();
+        console.log('All devices turned off due to panic mode');
+      }
+    }
+  });
+
 // Default route for serving the web interface
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Initialize device listeners when server starts
+setupDeviceListeners().catch(err => {
+  console.error('Failed to set up device listeners:', err);
+});
+
+// Clean up GPIO pins on server shutdown
+process.on('SIGINT', () => {
+  console.log('Cleaning up GPIO pins before exit...');
+  
+  Object.values(activePins).forEach(pin => {
+    try {
+      pin.unexport();
+    } catch (error) {
+      console.error('Error unexporting pin:', error);
+    }
+  });
+  
+  process.exit(0);
 });
 
 // Start the server

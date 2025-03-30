@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from "react";
 import { db } from "@/lib/firebase";
 import { collection, query, getDocs, doc, getDoc, updateDoc, onSnapshot } from "firebase/firestore";
@@ -22,6 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
 
 const RaspberryPiInterface = () => {
   // Firebase connection status
@@ -44,6 +44,19 @@ const RaspberryPiInterface = () => {
   // Pin edit state
   const [editingPins, setEditingPins] = useState<Record<string, string>>({});
   const [savingPins, setSavingPins] = useState<Record<string, boolean>>({});
+
+  // Live refresh state
+  const [liveRefreshEnabled, setLiveRefreshEnabled] = useState(false);
+  const [liveRefreshIntervals, setLiveRefreshIntervals] = useState<{
+    devices: NodeJS.Timeout | null;
+    members: NodeJS.Timeout | null;
+    panicMode: NodeJS.Timeout | null;
+  }>({
+    devices: null,
+    members: null,
+    panicMode: null
+  });
+  const DEFAULT_REFRESH_RATE = 5000; // 5 seconds
 
   // Check Firebase connection
   useEffect(() => {
@@ -181,6 +194,41 @@ const RaspberryPiInterface = () => {
     }
   }, []);
 
+  // Toggle live refresh functionality
+  const toggleLiveRefresh = useCallback((enabled: boolean) => {
+    setLiveRefreshEnabled(enabled);
+    
+    if (enabled) {
+      // Start refresh intervals
+      const devicesInterval = setInterval(fetchDevices, DEFAULT_REFRESH_RATE);
+      const membersInterval = setInterval(fetchPresentMembers, DEFAULT_REFRESH_RATE);
+      const panicModeInterval = setInterval(fetchPanicMode, DEFAULT_REFRESH_RATE);
+      
+      setLiveRefreshIntervals({
+        devices: devicesInterval,
+        members: membersInterval,
+        panicMode: panicModeInterval
+      });
+      
+      toast.success("Live refresh enabled");
+      console.log("Live refresh enabled");
+    } else {
+      // Clear all intervals
+      if (liveRefreshIntervals.devices) clearInterval(liveRefreshIntervals.devices);
+      if (liveRefreshIntervals.members) clearInterval(liveRefreshIntervals.members);
+      if (liveRefreshIntervals.panicMode) clearInterval(liveRefreshIntervals.panicMode);
+      
+      setLiveRefreshIntervals({
+        devices: null,
+        members: null,
+        panicMode: null
+      });
+      
+      toast.info("Live refresh disabled");
+      console.log("Live refresh disabled");
+    }
+  }, [fetchDevices, fetchPresentMembers, fetchPanicMode, liveRefreshIntervals]);
+
   // Load all data on component mount
   useEffect(() => {
     if (isConnected) {
@@ -188,7 +236,14 @@ const RaspberryPiInterface = () => {
       fetchPresentMembers();
       fetchPanicMode();
     }
-  }, [isConnected, fetchDevices, fetchPresentMembers, fetchPanicMode]);
+    
+    // Cleanup function to clear any intervals when component unmounts
+    return () => {
+      if (liveRefreshIntervals.devices) clearInterval(liveRefreshIntervals.devices);
+      if (liveRefreshIntervals.members) clearInterval(liveRefreshIntervals.members);
+      if (liveRefreshIntervals.panicMode) clearInterval(liveRefreshIntervals.panicMode);
+    };
+  }, [isConnected, fetchDevices, fetchPresentMembers, fetchPanicMode, liveRefreshIntervals]);
 
   // Refresh individual sections when refresh keys change
   useEffect(() => {
@@ -219,6 +274,12 @@ const RaspberryPiInterface = () => {
 
   // Save pin to Firebase
   const savePin = async (deviceId: string) => {
+    // Temporarily disable live refresh if enabled to prevent interference
+    const wasLiveRefreshEnabled = liveRefreshEnabled;
+    if (wasLiveRefreshEnabled) {
+      toggleLiveRefresh(false);
+    }
+    
     const newPin = editingPins[deviceId]?.trim();
     
     if (!newPin) {
@@ -240,6 +301,11 @@ const RaspberryPiInterface = () => {
       });
       
       toast.success("Pin updated successfully");
+      
+      // Re-enable live refresh if it was enabled before
+      if (wasLiveRefreshEnabled) {
+        setTimeout(() => toggleLiveRefresh(true), 1000);
+      }
     } catch (error) {
       console.error("Error updating pin:", error);
       toast.error("Failed to update pin");
@@ -251,6 +317,31 @@ const RaspberryPiInterface = () => {
   return (
     <div className="container mx-auto py-8 px-4 max-w-6xl">
       <h1 className="text-3xl font-bold mb-8 text-center">Raspberry Pi Control Interface</h1>
+      
+      {/* Live Refresh Toggle */}
+      <div className="mb-6 flex justify-center">
+        <div className="flex items-center p-3 bg-background border rounded-lg shadow-sm">
+          <span className="mr-3 font-medium">Live Refresh</span>
+          <Switch
+            checked={liveRefreshEnabled}
+            onCheckedChange={toggleLiveRefresh}
+            id="live-refresh-toggle"
+          />
+          <div className={cn(
+            "ml-3 text-xs px-2 py-1 rounded-full flex items-center gap-1",
+            liveRefreshEnabled 
+              ? "bg-primary text-primary-foreground" 
+              : "bg-muted text-muted-foreground"
+          )}>
+            <div className={cn(
+              "w-2 h-2 rounded-full",
+              liveRefreshEnabled && "animate-pulse bg-primary-foreground",
+              !liveRefreshEnabled && "bg-muted-foreground"
+            )} />
+            <span>{liveRefreshEnabled ? "Live" : "Off"}</span>
+          </div>
+        </div>
+      </div>
       
       {/* Firebase Connection Status */}
       <div className="mb-8">
@@ -291,8 +382,9 @@ const RaspberryPiInterface = () => {
                 size="icon" 
                 className="absolute right-4 top-4"
                 onClick={() => setDevicesRefreshKey(prev => prev + 1)}
+                disabled={liveRefreshEnabled}
               >
-                <RefreshCw className="w-4 h-4" />
+                <RefreshCw className={cn("w-4 h-4", liveRefreshEnabled && "animate-spin")} />
               </Button>
               <CardTitle className="flex items-center gap-2">
                 <Cpu className="w-5 h-5" /> 
@@ -363,8 +455,9 @@ const RaspberryPiInterface = () => {
                 size="icon" 
                 className="absolute right-4 top-4"
                 onClick={() => setUsersRefreshKey(prev => prev + 1)}
+                disabled={liveRefreshEnabled}
               >
-                <RefreshCw className="w-4 h-4" />
+                <RefreshCw className={cn("w-4 h-4", liveRefreshEnabled && "animate-spin")} />
               </Button>
               <CardTitle className="flex items-center gap-2">
                 <UserCheck className="w-5 h-5" /> 
@@ -433,8 +526,9 @@ const RaspberryPiInterface = () => {
                 size="icon" 
                 className="absolute right-4 top-4"
                 onClick={() => setPanicRefreshKey(prev => prev + 1)}
+                disabled={liveRefreshEnabled}
               >
-                <RefreshCw className="w-4 h-4" />
+                <RefreshCw className={cn("w-4 h-4", liveRefreshEnabled && "animate-spin")} />
               </Button>
               <CardTitle className="flex items-center gap-2">
                 <AlertTriangle className="w-5 h-5" /> 
@@ -492,10 +586,18 @@ const RaspberryPiInterface = () => {
               </div>
               
               <div className="space-y-2">
+                <h3 className="font-medium">Live Refresh Mode</h3>
+                <p className="text-sm text-muted-foreground">
+                  When Live Refresh is turned on, the dashboard will automatically update every 5 seconds with the latest data from Firebase.
+                  Turn it off when you need to make changes to device pins without interruption.
+                </p>
+              </div>
+              
+              <div className="space-y-2">
                 <h3 className="font-medium">Refreshing Data</h3>
                 <p className="text-sm text-muted-foreground">
                   Each panel has a refresh button in the top-right corner that allows you to update just that section.
-                  This is useful if you need to check for changes without reloading the entire page.
+                  These buttons are disabled when Live Refresh is active.
                 </p>
               </div>
               
@@ -503,7 +605,7 @@ const RaspberryPiInterface = () => {
                 <h3 className="font-medium">Pin Number Management</h3>
                 <p className="text-sm text-muted-foreground">
                   You can update the GPIO pin numbers for devices by entering a new pin value and clicking the Save button.
-                  Pin numbers should be valid GPIO pin numbers for your Raspberry Pi model.
+                  Live Refresh will automatically pause when saving to prevent conflicts.
                 </p>
               </div>
             </CardContent>
