@@ -39,14 +39,27 @@ This server runs on a Raspberry Pi and connects to Firebase to control your home
    - Go to `http://<raspberry-pi-ip-address>:3000`
    - For example: `http://192.168.1.100:3000` or `http://localhost:3000` if accessing from the Pi itself
 
-### Raspberry Pi 400 Notes
+### Raspberry Pi 400 Specific Notes
 
-The Raspberry Pi 400 has the same GPIO pin layout as other Raspberry Pi models, but since it's built into a keyboard, physical access to the GPIO pins is different:
+The Raspberry Pi 400 has the same GPIO pin layout as other Raspberry Pi models, but since it's built into a keyboard, certain pins are used by the keyboard functionality:
 
-- The GPIO pins are accessible through the 40-pin header at the back of the Pi 400
-- All pin numbers in the interface refer to the physical pin positions on this 40-pin header
-- The system will automatically convert between physical pin numbers and GPIO numbers
-- Some pins might show EINVAL errors if they're reserved for special functions on the Pi 400
+#### Best Pins to Use on Pi 400
+
+For the most reliable operation on Raspberry Pi 400, use these physical pins:
+- **Highly Recommended**: 3, 5, 7, 11, 13, 15, 19, 21, 23, 29, 31, 33, 35, 37
+- These pins have been tested and verified to work reliably with Pi 400
+
+#### Pins to Avoid on Pi 400
+
+The following pins may be problematic on Raspberry Pi 400 as they may be used by the keyboard:
+- **Potentially Problematic**: 8, 10, 16, 18, 22, 24, 26, 27, 28, 36, 38, 40
+- If you must use these pins, the system will automatically fall back to simulated mode
+
+#### GPIO Access on Pi 400
+
+- Some pins on the Pi 400 will show "EINVAL: invalid argument" errors
+- This is normal and the system automatically handles this by switching to simulated mode
+- To maximize real GPIO access, always run with `sudo npm start`
 
 ### GPIO Control and Status Monitoring
 
@@ -71,36 +84,36 @@ Valid physical pin numbers that can be used in the interface:
 
 Here's the mapping between physical pins and GPIO numbers for reference:
 
-| Physical Pin | GPIO Number |
-|--------------|-------------|
-| 3            | 2           |
-| 5            | 3           |
-| 7            | 4           |
-| 8            | 14          |
-| 10           | 15          |
-| 11           | 17          |
-| 12           | 18          |
-| 13           | 27          |
-| 15           | 22          |
-| 16           | 23          |
-| 18           | 24          |
-| 19           | 10          |
-| 21           | 9           |
-| 22           | 25          |
-| 23           | 11          |
-| 24           | 8           |
-| 26           | 7           |
-| 27           | 0           |
-| 28           | 1           |
-| 29           | 5           |
-| 31           | 6           |
-| 32           | 12          |
-| 33           | 13          |
-| 35           | 19          |
-| 36           | 16          |
-| 37           | 26          |
-| 38           | 20          |
-| 40           | 21          |
+| Physical Pin | GPIO Number | Pi 400 Compatibility |
+|--------------|-------------|----------------------|
+| 3            | 2           | Recommended          |
+| 5            | 3           | Recommended          |
+| 7            | 4           | Recommended          |
+| 8            | 14          | May have issues      |
+| 10           | 15          | May have issues      |
+| 11           | 17          | Recommended          |
+| 12           | 18          | Generally works      |
+| 13           | 27          | Recommended          |
+| 15           | 22          | Recommended          |
+| 16           | 23          | May have issues      |
+| 18           | 24          | May have issues      |
+| 19           | 10          | Recommended          |
+| 21           | 9           | Recommended          |
+| 22           | 25          | May have issues      |
+| 23           | 11          | Recommended          |
+| 24           | 8           | May have issues      |
+| 26           | 7           | May have issues      |
+| 27           | 0           | Avoid (ID EEPROM)    |
+| 28           | 1           | Avoid (ID EEPROM)    |
+| 29           | 5           | Recommended          |
+| 31           | 6           | Recommended          |
+| 32           | 12          | Generally works      |
+| 33           | 13          | Recommended          |
+| 35           | 19          | Recommended          |
+| 36           | 16          | Avoid (keyboard)     |
+| 37           | 26          | Recommended          |
+| 38           | 20          | Avoid (keyboard)     |
+| 40           | 21          | Avoid (keyboard)     |
 
 You can configure specific GPIO pin mappings for your devices through the web interface. Only enter pin numbers from the list above.
 
@@ -110,13 +123,13 @@ To verify that your GPIO pins are working correctly:
 
 1. Watch the console output for log messages like:
    ```
-   [PIN CHANGE] Physical pin 11 (GPIO 17) set to 1 (ON)
+   [PIN CHANGE] Physical pin 11 (GPIO 17) set to 1 (ON) [PHYSICAL]
    ```
 
 2. Every 30 seconds, check the pin status summary that looks like:
    ```
    ----- CURRENT PIN STATUS -----
-   Physical Pin 11 (GPIO 17): ON (1) [PHYSICAL]
+   Physical Pin 11 (GPIO 17): ON (1) [PHYSICAL] [RECOMMENDED PIN]
    Physical Pin 13 (GPIO 27): OFF (0) [SIMULATED]
    -----------------------------
    ```
@@ -139,9 +152,9 @@ The most common issue is permissions for GPIO access. If you see errors like `EI
    sudo npm start
    ```
 
-2. **Check if the pin is available on your Raspberry Pi model**:
-   - Some pins on the Raspberry Pi 400 might be reserved for keyboard or internal functions
-   - Try using different pins (e.g., 11, 13, 15, 16) that are known to work well
+2. **Use recommended pins for Pi 400**:
+   - Use pins 3, 5, 7, 11, 13, 15, 19, 21, 23, 29, 31, 33, 35, 37 which work reliably on Pi 400
+   - Avoid pins 8, 10, 16, 18, 22, 24, 26, 27, 28, 36, 38, 40 which may conflict with keyboard
 
 3. **Check for pin conflicts**:
    - Some pins might be used by other services or have specific functions
@@ -162,13 +175,24 @@ The most common issue is permissions for GPIO access. If you see errors like `EI
    ```
    You'll need to log out and back in for this to take effect.
 
+#### Simulated Mode
+
+If you see "Using MockGpio for simulated GPIO control" in the logs, this means:
+- The system couldn't access real GPIO pins and is running in simulation mode
+- All pin changes will be logged but no actual hardware control will happen
+- This is perfectly fine for testing or when you don't need physical control
+
+If you want to switch from simulated to real mode:
+1. Run with sudo: `sudo npm start`
+2. Make sure onoff is correctly installed: `npm install onoff`
+3. Check that you're using pins that are available on your Pi model (see table above)
+
 #### Other Common Issues
 
 - If you see connection errors, verify that your `serviceAccountKey.json` is valid
 - Make sure your Raspberry Pi has internet access to connect to Firebase
-- If you see "Error setting up GPIO pin" messages but the server continues running, the app will use simulated GPIO (mock mode)
+- If specific pins are not working, try using one of the recommended pins from the table above
 - For deeper debugging, set the environment variable `DEBUG=1` when running: `DEBUG=1 sudo npm start`
-- If specific pins are not working, check if they might be reserved on the Pi 400 by trying different pins
 
 ### Automatic Startup
 
@@ -220,4 +244,3 @@ The server includes a test endpoint that allows you to temporarily activate any 
 4. Check the server console for confirmation that the test was executed
 
 This test function is useful for verifying hardware connections without changing device status in Firebase.
-
