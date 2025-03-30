@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { db } from "@/lib/firebase";
@@ -6,7 +5,7 @@ import {
   doc, getDoc, collection, query, where, getDocs, deleteDoc, addDoc, updateDoc, 
   serverTimestamp, onSnapshot, writeBatch
 } from "firebase/firestore";
-import { Room, Device, CurrentPrivilegedUser } from "@/lib/types";
+import { Room, Device, CurrentPrivilegedUser, Member } from "@/lib/types";
 import DeviceItem from "@/components/DeviceItem";
 import { useAuth } from "@/contexts/AuthContext";
 import { 
@@ -207,7 +206,6 @@ const RoomDetail = () => {
   
   const deleteDevice = async (deviceId: string) => {
     try {
-      // First, get the device to check assigned members
       const deviceDoc = await getDoc(doc(db, "devices", deviceId));
       if (!deviceDoc.exists()) {
         toast.error("Device not found");
@@ -217,10 +215,8 @@ const RoomDetail = () => {
       const deviceData = deviceDoc.data();
       const assignedMembers = deviceData.assignedMembers || [];
       
-      // Create a batch to update all affected documents
       const batch = writeBatch(db);
       
-      // 1. Remove device ID from all members' assignedDevices arrays
       for (const memberId of assignedMembers) {
         const memberDoc = await getDoc(doc(db, "members", memberId));
         if (memberDoc.exists()) {
@@ -235,10 +231,8 @@ const RoomDetail = () => {
         }
       }
       
-      // 2. Delete the device document
       batch.delete(doc(db, "devices", deviceId));
       
-      // 3. Commit all the changes
       await batch.commit();
       
       setRefreshKey(prev => prev + 1);
@@ -257,7 +251,6 @@ const RoomDetail = () => {
     try {
       setIsDeletingRoom(true);
       
-      // First, get all devices in this room
       const devicesQuery = query(
         collection(db, "devices"),
         where("roomId", "==", roomId)
@@ -266,30 +259,25 @@ const RoomDetail = () => {
       const devicesSnapshot = await getDocs(devicesQuery);
       const deviceIds = devicesSnapshot.docs.map(doc => doc.id);
       
-      // Get all members
       const membersQuery = query(collection(db, "members"));
       const membersSnapshot = await getDocs(membersQuery);
       const members = membersSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      }));
+      } as Member & { id: string }));
       
-      // Create a batch for all updates
       const batch = writeBatch(db);
       
-      // 1. For each member, remove the room from assignedRooms and any devices in the room from assignedDevices
       for (const member of members) {
         let needsUpdate = false;
         let updatedAssignedRooms = [...(member.assignedRooms || [])];
         let updatedAssignedDevices = [...(member.assignedDevices || [])];
         
-        // Remove the room if assigned
         if (updatedAssignedRooms.includes(roomId)) {
           updatedAssignedRooms = updatedAssignedRooms.filter(id => id !== roomId);
           needsUpdate = true;
         }
         
-        // Remove any devices from this room
         const hasDevices = deviceIds.some(deviceId => updatedAssignedDevices.includes(deviceId));
         if (hasDevices) {
           updatedAssignedDevices = updatedAssignedDevices.filter(
@@ -306,15 +294,12 @@ const RoomDetail = () => {
         }
       }
       
-      // 2. Delete all devices in the room
       for (const deviceId of deviceIds) {
         batch.delete(doc(db, "devices", deviceId));
       }
       
-      // 3. Delete the room itself
       batch.delete(doc(db, "rooms", roomId));
       
-      // 4. Commit all changes
       await batch.commit();
       
       toast.success("Room deleted successfully");
