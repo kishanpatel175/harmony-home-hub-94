@@ -1,3 +1,4 @@
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -11,6 +12,7 @@ import RoomDetail from "./pages/RoomDetail";
 import MembersPage from "./pages/MembersPage";
 import UserManagementPage from "./pages/UserManagementPage";
 import UserCreationPage from "./pages/UserCreationPage";
+import RaspberryPiInterface from "./pages/RaspberryPiInterface";
 import Navigation from "./components/Navigation";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { useEffect, useState, useRef } from "react";
@@ -261,6 +263,12 @@ const App = () => {
                     <Route path="/create-user" element={
                       <ProtectedRoute requireAdmin={true}>
                         <UserCreationPage />
+                      </ProtectedRoute>
+                    } />
+                    
+                    <Route path="/raspberry-pi" element={
+                      <ProtectedRoute requireAdmin={true}>
+                        <RaspberryPiInterface />
                       </ProtectedRoute>
                     } />
                     

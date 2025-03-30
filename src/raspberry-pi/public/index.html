@@ -1,0 +1,490 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Raspberry Pi Home Automation</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+    .refresh-btn {
+      transition: transform 0.3s ease;
+    }
+    .refresh-btn:hover {
+      transform: rotate(90deg);
+    }
+    .refresh-btn.spinning {
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .card {
+      background-color: white;
+      border-radius: 0.5rem;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+    .card:hover {
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+    .status-badge {
+      display: inline-block;
+      border-radius: 9999px;
+      padding: 0.25rem 0.75rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    .status-on {
+      background-color: #DEF7EC;
+      color: #03543E;
+    }
+    .status-off {
+      background-color: #E5E7EB;
+      color: #374151;
+    }
+    .panic-active {
+      background-color: #FEE2E2;
+      color: #B91C1C;
+      border: 1px solid #FECACA;
+    }
+    .panic-inactive {
+      background-color: #ECFDF5;
+      color: #065F46;
+      border: 1px solid #A7F3D0;
+    }
+    .privileged-badge {
+      background-color: #E0E7FF;
+      color: #4338CA;
+      padding: 0.25rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+    }
+    .spinner {
+      border: 3px solid rgba(0, 0, 0, 0.1);
+      border-radius: 50%;
+      border-top: 3px solid #3B82F6;
+      width: 24px;
+      height: 24px;
+      animation: spin 1s linear infinite;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div class="container mx-auto py-8 px-4">
+    <h1 class="text-3xl font-bold mb-8 text-center">Raspberry Pi Home Automation Dashboard</h1>
+    
+    <!-- Connection Status -->
+    <div id="connection-status" class="mb-8 p-4 rounded-lg border flex items-center gap-3">
+      <div class="w-10 h-10 rounded-full flex items-center justify-center bg-gray-100">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        </svg>
+      </div>
+      <div>
+        <h2 class="font-semibold text-lg">Connecting to Firebase...</h2>
+        <p class="text-sm text-gray-500">Checking connection status...</p>
+      </div>
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <!-- Devices Section - DIV1 -->
+      <div id="devices-card" class="card">
+        <div class="relative p-6 border-b">
+          <button onclick="refreshDevices()" class="refresh-btn absolute right-4 top-6">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+          <div class="flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            <h3 class="text-xl font-semibold">Devices</h3>
+          </div>
+          <p class="text-sm text-gray-500 mt-1">Manage your connected devices</p>
+        </div>
+        
+        <div id="devices-content" class="p-6">
+          <div class="flex justify-center items-center h-32">
+            <div class="spinner"></div>
+            <span class="ml-3 text-gray-500">Loading devices...</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Present Members Section - DIV2 -->
+      <div id="members-card" class="card">
+        <div class="relative p-6 border-b">
+          <button onclick="refreshMembers()" class="refresh-btn absolute right-4 top-6">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+          <div class="flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+            <h3 class="text-xl font-semibold">Present Members</h3>
+          </div>
+          <p class="text-sm text-gray-500 mt-1">Members currently at home</p>
+        </div>
+        
+        <div id="members-content" class="p-6">
+          <div class="flex justify-center items-center h-32">
+            <div class="spinner"></div>
+            <span class="ml-3 text-gray-500">Loading members...</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Panic Mode Section - DIV3 -->
+      <div id="panic-card" class="card">
+        <div class="relative p-6 border-b">
+          <button onclick="refreshPanicMode()" class="refresh-btn absolute right-4 top-6">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+          <div class="flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <h3 class="text-xl font-semibold">Panic Mode Status</h3>
+          </div>
+          <p class="text-sm text-gray-500 mt-1">Current emergency status</p>
+        </div>
+        
+        <div id="panic-content" class="p-6">
+          <div class="flex justify-center items-center h-32">
+            <div class="spinner"></div>
+            <span class="ml-3 text-gray-500">Loading panic mode status...</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- System Info Section - DIV4 -->
+      <div class="card">
+        <div class="p-6 border-b">
+          <div class="flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h3 class="text-xl font-semibold">System Information</h3>
+          </div>
+          <p class="text-sm text-gray-500 mt-1">Instructions and information</p>
+        </div>
+        
+        <div class="p-6 space-y-4">
+          <div>
+            <h4 class="font-medium mb-1">About This Interface</h4>
+            <p class="text-sm text-gray-600">
+              This dashboard runs on your Raspberry Pi and connects to Firebase to manage your home automation system.
+              You can view and control devices, see who's home, and monitor panic mode status.
+            </p>
+          </div>
+          
+          <div>
+            <h4 class="font-medium mb-1">Refreshing Data</h4>
+            <p class="text-sm text-gray-600">
+              Each panel has a refresh button in the top-right corner to update just that section without reloading the page.
+            </p>
+          </div>
+          
+          <div>
+            <h4 class="font-medium mb-1">Pin Number Management</h4>
+            <p class="text-sm text-gray-600">
+              You can update the GPIO pin numbers for your devices by entering a new pin value and clicking the Save button.
+              Pin numbers should correspond to valid GPIO pins on your Raspberry Pi.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // API base URL - change this to your Raspberry Pi's IP address if accessing from another device
+    const API_BASE_URL = 'http://localhost:3000/api';
+    
+    // Function to check Firebase connection
+    async function checkConnection() {
+      const connectionStatus = document.getElementById('connection-status');
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/check-connection`);
+        const data = await response.json();
+        
+        if (data.status === 'connected') {
+          connectionStatus.className = 'mb-8 p-4 rounded-lg border bg-green-50 border-green-200';
+          connectionStatus.innerHTML = `
+            <div class="w-10 h-10 rounded-full flex items-center justify-center bg-green-100">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <div>
+              <h2 class="font-semibold text-lg">Connected to Firebase</h2>
+              <p class="text-sm text-gray-600">Connection to Firebase was successful. You can now interact with devices.</p>
+            </div>
+          `;
+          
+          // Load initial data
+          refreshDevices();
+          refreshMembers();
+          refreshPanicMode();
+        }
+      } catch (error) {
+        console.error('Connection error:', error);
+        connectionStatus.className = 'mb-8 p-4 rounded-lg border bg-red-50 border-red-200';
+        connectionStatus.innerHTML = `
+          <div class="w-10 h-10 rounded-full flex items-center justify-center bg-red-100">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </div>
+          <div>
+            <h2 class="font-semibold text-lg">Connection Failed</h2>
+            <p class="text-sm text-gray-600">Failed to connect to Firebase. Please check your server configuration.</p>
+          </div>
+        `;
+      }
+    }
+    
+    // Function to refresh devices
+    async function refreshDevices() {
+      const refreshBtn = document.querySelector('#devices-card .refresh-btn');
+      refreshBtn.classList.add('spinning');
+      
+      const devicesContent = document.getElementById('devices-content');
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/devices`);
+        const devices = await response.json();
+        
+        if (devices.length === 0) {
+          devicesContent.innerHTML = `
+            <div class="text-center p-4 text-gray-500">
+              No devices found
+            </div>
+          `;
+        } else {
+          let html = '<div class="space-y-4">';
+          
+          devices.forEach(device => {
+            html += `
+              <div class="border rounded-lg p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h3 class="font-medium">${device.device_name}</h3>
+                    <div class="text-sm text-gray-500">
+                      ${device.device_category} • Room: ${device.room_name}
+                    </div>
+                  </div>
+                  <div class="status-badge ${device.device_status === 'ON' ? 'status-on' : 'status-off'}">
+                    ${device.device_status}
+                  </div>
+                </div>
+                
+                <div class="flex items-center gap-2">
+                  <input 
+                    id="pin-${device.id}" 
+                    class="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                    placeholder="Pin Number" 
+                    value="${device.pin || ''}"
+                  />
+                  <button 
+                    onclick="savePin('${device.id}')"
+                    class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded-md text-sm font-medium transition-colors"
+                  >
+                    Save Pin
+                  </button>
+                </div>
+              </div>
+            `;
+          });
+          
+          html += '</div>';
+          devicesContent.innerHTML = html;
+        }
+      } catch (error) {
+        console.error('Error fetching devices:', error);
+        devicesContent.innerHTML = `
+          <div class="text-center p-4 text-red-500">
+            Failed to load devices. Please try again.
+          </div>
+        `;
+      } finally {
+        refreshBtn.classList.remove('spinning');
+      }
+    }
+    
+    // Function to save pin
+    async function savePin(deviceId) {
+      const pinInput = document.getElementById(`pin-${deviceId}`);
+      const pin = pinInput.value.trim();
+      
+      if (!pin) {
+        alert('Pin cannot be empty');
+        return;
+      }
+      
+      if (!/^\d+$/.test(pin)) {
+        alert('Pin must contain only digits');
+        return;
+      }
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/devices/${deviceId}/update-pin`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ pin })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          alert('Pin updated successfully');
+        } else {
+          alert(`Failed to update pin: ${result.error}`);
+        }
+      } catch (error) {
+        console.error('Error saving pin:', error);
+        alert('Failed to update pin. Please try again.');
+      }
+    }
+    
+    // Function to refresh members
+    async function refreshMembers() {
+      const refreshBtn = document.querySelector('#members-card .refresh-btn');
+      refreshBtn.classList.add('spinning');
+      
+      const membersContent = document.getElementById('members-content');
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/present-members`);
+        const data = await response.json();
+        const { members, privilegedUser } = data;
+        
+        if (members.length === 0) {
+          membersContent.innerHTML = `
+            <div class="text-center p-4 text-gray-500">
+              No members currently present
+            </div>
+          `;
+        } else {
+          let html = '<div class="space-y-4">';
+          
+          // Privileged user banner
+          html += `
+            <div class="bg-blue-50 p-3 rounded-lg flex items-center gap-3 border border-blue-100">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+              <div>
+                <h4 class="font-medium">Current Privileged User</h4>
+                <p class="text-sm">
+                  ${privilegedUser.current_most_privileged_user_id ? 
+                    members.find(m => m.id === privilegedUser.current_most_privileged_user_id)?.member_name || 'Unknown' : 
+                    'None'
+                  }
+                  ${privilegedUser.current_privileged_role ? 
+                    `<span class="text-xs ml-1 opacity-70">(${privilegedUser.current_privileged_role})</span>` : 
+                    ''
+                  }
+                </p>
+              </div>
+            </div>
+          `;
+          
+          // Member list
+          members.forEach(member => {
+            const isPrivileged = member.id === privilegedUser.current_most_privileged_user_id;
+            
+            html += `
+              <div class="p-3 rounded-lg border flex items-center justify-between ${isPrivileged ? 'bg-blue-50 border-blue-200' : ''}">
+                <div class="flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 ${isPrivileged ? 'text-blue-500' : 'text-gray-500'}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  <div>
+                    <p class="font-medium">${member.member_name}</p>
+                    <p class="text-xs text-gray-500">${member.role}</p>
+                  </div>
+                </div>
+                
+                ${isPrivileged ? `
+                  <span class="privileged-badge">
+                    Privileged
+                  </span>
+                ` : ''}
+              </div>
+            `;
+          });
+          
+          html += '</div>';
+          membersContent.innerHTML = html;
+        }
+      } catch (error) {
+        console.error('Error fetching members:', error);
+        membersContent.innerHTML = `
+          <div class="text-center p-4 text-red-500">
+            Failed to load members. Please try again.
+          </div>
+        `;
+      } finally {
+        refreshBtn.classList.remove('spinning');
+      }
+    }
+    
+    // Function to refresh panic mode status
+    async function refreshPanicMode() {
+      const refreshBtn = document.querySelector('#panic-card .refresh-btn');
+      refreshBtn.classList.add('spinning');
+      
+      const panicContent = document.getElementById('panic-content');
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/panic-mode`);
+        const data = await response.json();
+        
+        panicContent.innerHTML = `
+          <div class="p-6 rounded-lg border ${data.is_panic_mode ? 'panic-active' : 'panic-inactive'} flex items-center gap-4">
+            <div class="w-12 h-12 rounded-full flex items-center justify-center ${data.is_panic_mode ? 'bg-red-100' : 'bg-green-100'}">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 ${data.is_panic_mode ? 'text-red-600' : 'text-green-600'}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-lg font-medium">
+                Panic Mode is ${data.is_panic_mode ? 'ACTIVE' : 'INACTIVE'}
+              </h3>
+              <p class="text-sm text-gray-600">
+                ${data.is_panic_mode 
+                  ? 'Emergency mode is currently active. All doors are unlocked and devices are turned off.' 
+                  : 'System is operating normally.'}
+              </p>
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        console.error('Error fetching panic mode:', error);
+        panicContent.innerHTML = `
+          <div class="text-center p-4 text-red-500">
+            Failed to load panic mode status. Please try again.
+          </div>
+        `;
+      } finally {
+        refreshBtn.classList.remove('spinning');
+      }
+    }
+    
+    // Check connection when the page loads
+    document.addEventListener('DOMContentLoaded', checkConnection);
+  </script>
+</body>
+</html>
