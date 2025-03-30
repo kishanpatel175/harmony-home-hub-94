@@ -2,7 +2,7 @@
 {
   "name": "raspberry-pi-home-automation",
   "version": "1.0.0",
-  "description": "Home Automation System for Raspberry Pi",
+  "description": "Home Automation System for Raspberry Pi 400 and other models",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

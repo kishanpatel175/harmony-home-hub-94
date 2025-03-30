@@ -1,3 +1,4 @@
+
 const express = require('express');
 const admin = require('firebase-admin');
 const cors = require('cors');
@@ -87,6 +88,14 @@ const PHYSICAL_TO_GPIO = {
   '40': 21
 };
 
+// List of pins that are known to be problematic on Raspberry Pi 400
+// These are often used by the keyboard functionality
+const PI_400_PROBLEMATIC_PINS = [
+  '27', '28', // GPIO 0, 1 - used for ID EEPROM
+  '36', // GPIO 16 - can be used for keyboard functions
+  '38', '40' // GPIO 20, 21 - may be used for keyboard/mouse functions
+];
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -151,6 +160,11 @@ const physicalToGPIO = (physicalPin) => {
   return gpioNumber;
 };
 
+// Check if a pin is likely to be problematic on Pi 400
+const isPotentiallyProblematicPin = (physicalPin) => {
+  return PI_400_PROBLEMATIC_PINS.includes(physicalPin);
+};
+
 // Helper function to safely set GPIO pin state with better error handling
 const setPinState = (pin, value) => {
   if (!pin) return false;
@@ -183,7 +197,7 @@ const setPinState = (pin, value) => {
   }
 };
 
-// Helper function to setup GPIO pins with improved error handling
+// Helper function to setup GPIO pins with improved error handling for Pi 400
 const setupGpioPin = (pinNumber, initialState) => {
   try {
     // Convert physical pin number to GPIO number
@@ -204,6 +218,12 @@ const setupGpioPin = (pinNumber, initialState) => {
       }
     }
     
+    // Warn about potentially problematic pins on Pi 400
+    if (isPotentiallyProblematicPin(pinNumber)) {
+      console.warn(`WARNING: Physical pin ${pinNumber} (GPIO ${gpioNumber}) might be reserved for keyboard/internal functions on Raspberry Pi 400.`);
+      console.warn(`If you experience issues, try using a different pin.`);
+    }
+    
     // Create new GPIO pin with OUTPUT direction
     let pin;
     try {
@@ -217,6 +237,7 @@ const setupGpioPin = (pinNumber, initialState) => {
         console.error(`Try running: sudo chmod -R 777 /sys/class/gpio`);
       } else if (error.code === 'EINVAL') {
         console.error(`Invalid argument for GPIO ${gpioNumber}. This pin might not be available on Raspberry Pi 400.`);
+        console.error(`Try using a different pin like 11, 13, or 15 which usually work well on Pi 400.`);
       }
       
       // Use a mock pin if we can't initialize the real one
@@ -302,13 +323,16 @@ app.get('/api/gpio-status', (req, res) => {
       physical_pin: physicalPin,
       gpio: gpioNumber,
       value: pin.value,
-      status: pin.value === 1 ? 'ON' : 'OFF'
+      status: pin.value === 1 ? 'ON' : 'OFF',
+      problematic: isPotentiallyProblematicPin(physicalPin)
     });
   });
   
   res.json({
     has_permission: hasGpioPermission,
-    active_pins: pinStatus
+    active_pins: pinStatus,
+    pi_model: "Raspberry Pi 400",
+    pi_400_problematic_pins: PI_400_PROBLEMATIC_PINS
   });
 });
 
@@ -337,7 +361,8 @@ app.get('/api/devices', async (req, res) => {
       return {
         ...deviceData,
         id: deviceId,
-        room_name: roomName
+        room_name: roomName,
+        pin_problematic: deviceData.pin ? isPotentiallyProblematicPin(deviceData.pin) : false
       };
     });
     
@@ -370,6 +395,9 @@ app.post('/api/devices/:deviceId/update-pin', async (req, res) => {
       });
     }
     
+    // Check if pin is potentially problematic on Pi 400
+    const isProblematic = isPotentiallyProblematicPin(pin);
+    
     const deviceRef = db.collection('devices').doc(deviceId);
     const deviceDoc = await deviceRef.get();
     
@@ -386,7 +414,13 @@ app.post('/api/devices/:deviceId/update-pin', async (req, res) => {
     const setupSuccess = setupGpioPin(pin, device.device_status);
     
     console.log(`Updated pin for device ${deviceId} to ${pin}`);
-    res.json({ success: true, gpioSetup: setupSuccess });
+    res.json({ 
+      success: true, 
+      gpioSetup: setupSuccess,
+      warning: isProblematic ? 
+        'This pin may be reserved for keyboard or internal functions on Raspberry Pi 400. Consider using a different pin if it does not work correctly.' 
+        : null
+    });
   } catch (error) {
     console.error('Error updating pin:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -426,7 +460,7 @@ app.post('/api/devices/:deviceId/update-status', async (req, res) => {
     console.error('Error updating device status:', error);
     res.status(500).json({ success: false, error: error.message });
   }
-});
+};
 
 app.get('/api/present-members', async (req, res) => {
   try {
@@ -550,7 +584,8 @@ const printPinStatus = () => {
     const gpioNumber = PHYSICAL_TO_GPIO[physicalPin];
     const status = pin.value === 1 ? 'ON' : 'OFF';
     const pinType = pin instanceof MockGpio ? 'SIMULATED' : 'PHYSICAL';
-    console.log(`Physical Pin ${physicalPin} (GPIO ${gpioNumber}): ${status} (${pin.value}) [${pinType}]`);
+    const problematic = isPotentiallyProblematicPin(physicalPin) ? ' [MAY BE RESERVED ON PI 400]' : '';
+    console.log(`Physical Pin ${physicalPin} (GPIO ${gpioNumber}): ${status} (${pin.value}) [${pinType}]${problematic}`);
   });
   console.log('-----------------------------\n');
 };
@@ -558,19 +593,7 @@ const printPinStatus = () => {
 // Print pin status every 30 seconds
 setInterval(printPinStatus, 30000);
 
-// Start the server
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-  console.log(`Access the dashboard at http://localhost:${port}`);
-  console.log('GPIO control ' + (isRealGpio ? 'is ENABLED' : 'is SIMULATED'));
-  console.log('Physical-to-GPIO mapping is active. Using physical pin numbers in the configuration.');
-  console.log(`Running on ${hasGpioPermission ? 'REAL' : 'SIMULATED'} GPIO mode.`);
-  
-  if (!hasGpioPermission && isRealGpio) {
-    console.log('TIP: Run with sudo to enable real GPIO control: sudo npm start');
-  }
-});
-
+// Test specific pins
 app.post('/api/test-pin', async (req, res) => {
   try {
     const { pin } = req.body;
@@ -591,6 +614,12 @@ app.post('/api/test-pin', async (req, res) => {
       });
     }
     
+    // Check if the pin might be problematic on Pi 400
+    const isProblematic = isPotentiallyProblematicPin(pin);
+    if (isProblematic) {
+      console.warn(`WARNING: Test requested for pin ${pin} which may be reserved on Raspberry Pi 400.`);
+    }
+    
     // Set pin to ON for 1 second, then turn it OFF
     const setupSuccess = setupGpioPin(pin, 'ON');
     
@@ -603,7 +632,10 @@ app.post('/api/test-pin', async (req, res) => {
     
     res.json({ 
       success: setupSuccess, 
-      message: setupSuccess ? `Pin ${pin} set to ON temporarily` : `Failed to set pin ${pin}`
+      message: setupSuccess ? `Pin ${pin} set to ON temporarily` : `Failed to set pin ${pin}`,
+      warning: isProblematic ? 
+        'This pin may be reserved for keyboard or internal functions on Raspberry Pi 400. Consider using a different pin if it does not work correctly.' 
+        : null
     });
   } catch (error) {
     console.error('Error testing pin:', error);
@@ -614,9 +646,28 @@ app.post('/api/test-pin', async (req, res) => {
 // Helper function to check if a specific pin is valid on Raspberry Pi 400
 app.get('/api/valid-pins', (req, res) => {
   const validPins = Object.keys(PHYSICAL_TO_GPIO);
+  const recommendedPins = validPins.filter(pin => !isPotentiallyProblematicPin(pin));
+  const problematicPins = PI_400_PROBLEMATIC_PINS;
+  
   res.json({
     validPins,
+    recommendedPins,
+    problematicPins,
     totalPins: validPins.length,
     gpioMode: isRealGpio && hasGpioPermission ? 'REAL' : 'SIMULATED'
   });
+});
+
+// Start the server
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
+  console.log(`Access the dashboard at http://localhost:${port}`);
+  console.log('GPIO control ' + (isRealGpio ? 'is ENABLED' : 'is SIMULATED'));
+  console.log('Physical-to-GPIO mapping is active. Using physical pin numbers in the configuration.');
+  console.log(`Running on ${hasGpioPermission ? 'REAL' : 'SIMULATED'} GPIO mode.`);
+  console.log('Configured for Raspberry Pi 400 with appropriate pin warnings');
+  
+  if (!hasGpioPermission && isRealGpio) {
+    console.log('TIP: Run with sudo to enable real GPIO control: sudo npm start');
+  }
 });

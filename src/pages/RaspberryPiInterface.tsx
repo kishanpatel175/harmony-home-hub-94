@@ -19,7 +19,8 @@ import {
   Cpu, 
   AlertTriangle,
   Save,
-  Info
+  Info,
+  AlertCircle
 } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
 
 // Valid physical pin numbers that map to GPIO pins
 const VALID_PIN_NUMBERS = [
@@ -38,13 +40,25 @@ const VALID_PIN_NUMBERS = [
   '35', '36', '37', '38', '40'
 ];
 
+// Pins that may be problematic on Raspberry Pi 400
+const PI_400_PROBLEMATIC_PINS = [
+  '27', '28', // GPIO 0, 1 - used for ID EEPROM
+  '36', // GPIO 16 - can be used for keyboard functions
+  '38', '40' // GPIO 20, 21 - may be used for keyboard/mouse functions
+];
+
+// Pins that are recommended for Raspberry Pi 400
+const PI_400_RECOMMENDED_PINS = [
+  '11', '12', '13', '15', '16', '18', '22', '29', '31', '32', '33', '35', '37'
+];
+
 const RaspberryPiInterface = () => {
   // Firebase connection status
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   
   // Data states
-  const [devices, setDevices] = useState<(Device & { id: string, room_name: string })[]>([]);
+  const [devices, setDevices] = useState<(Device & { id: string, room_name: string, pin_problematic?: boolean })[]>([]);
   const [presentMembers, setPresentMembers] = useState<(Member & { id: string })[]>([]);
   const [privilegedUser, setPrivilegedUser] = useState<string>("");
   const [privilegedRole, setPrivilegedRole] = useState<string>("");
@@ -112,6 +126,9 @@ const RaspberryPiInterface = () => {
           }));
         }
         
+        // Check if pin is potentially problematic on Pi 400
+        const isPinProblematic = deviceData.pin ? PI_400_PROBLEMATIC_PINS.includes(deviceData.pin) : false;
+        
         // Get room name if roomId exists
         let roomName = "Unassigned";
         if (deviceData.roomId) {
@@ -128,7 +145,8 @@ const RaspberryPiInterface = () => {
         return {
           ...deviceData,
           id: deviceId,
-          room_name: roomName
+          room_name: roomName,
+          pin_problematic: isPinProblematic
         };
       });
       
@@ -280,6 +298,16 @@ const RaspberryPiInterface = () => {
     }
   }, [isConnected, fetchPanicMode, panicRefreshKey]);
 
+  // Check if pin is potentially problematic on Pi 400
+  const isPinProblematicForPi400 = (pin: string): boolean => {
+    return PI_400_PROBLEMATIC_PINS.includes(pin);
+  };
+  
+  // Check if pin is recommended for Pi 400
+  const isPinRecommendedForPi400 = (pin: string): boolean => {
+    return PI_400_RECOMMENDED_PINS.includes(pin);
+  };
+
   // Validate pin number
   const validatePin = (pin: string): boolean => {
     return VALID_PIN_NUMBERS.includes(pin);
@@ -355,7 +383,17 @@ const RaspberryPiInterface = () => {
         return newErrors;
       });
       
-      toast.success("Pin updated successfully");
+      // Warn if the pin is potentially problematic on Pi 400
+      if (isPinProblematicForPi400(newPin)) {
+        toast.warning(
+          `Pin ${newPin} may be reserved for keyboard functionality on Raspberry Pi 400. If it doesn't work, try one of the recommended pins.`,
+          { duration: 6000 }
+        );
+      } else if (isPinRecommendedForPi400(newPin)) {
+        toast.success("Pin updated successfully. This is a recommended pin for Pi 400.");
+      } else {
+        toast.success("Pin updated successfully");
+      }
       
       // Re-enable live refresh if it was enabled before
       if (wasLiveRefreshEnabled) {
@@ -369,9 +407,57 @@ const RaspberryPiInterface = () => {
     }
   };
 
+  // Test a specific pin
+  const testPin = async (pin: string) => {
+    try {
+      // Check if pin is valid
+      if (!validatePin(pin)) {
+        toast.error(`Invalid pin number. Must be one of: ${VALID_PIN_NUMBERS.join(', ')}`);
+        return;
+      }
+      
+      // Call the test pin API
+      const response = await fetch('/api/test-pin', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ pin }),
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        toast.success(`Testing pin ${pin}. It should turn ON for 1 second.`);
+        if (result.warning) {
+          toast.warning(result.warning, { duration: 6000 });
+        }
+      } else {
+        toast.error(result.error || 'Failed to test pin');
+      }
+    } catch (error) {
+      console.error('Error testing pin:', error);
+      toast.error('Error testing pin');
+    }
+  };
+
   return (
     <div className="container mx-auto py-8 px-4 max-w-6xl">
-      <h1 className="text-3xl font-bold mb-8 text-center">Raspberry Pi Control Interface</h1>
+      <h1 className="text-3xl font-bold mb-8 text-center">Raspberry Pi 400 Control Interface</h1>
+      
+      {/* Pi 400 Notice */}
+      <div className="mb-6">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3 dark:bg-blue-950/20 dark:border-blue-800">
+          <Info className="text-blue-500 dark:text-blue-400 h-5 w-5 flex-shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <h3 className="font-medium text-blue-800 dark:text-blue-300">Raspberry Pi 400 Configuration</h3>
+            <p className="mt-1 text-blue-700 dark:text-blue-400">
+              This interface is optimized for Raspberry Pi 400. Some pins may be reserved for keyboard functionality.
+              To avoid issues, we recommend using pins {PI_400_RECOMMENDED_PINS.join(', ')}.
+            </p>
+          </div>
+        </div>
+      </div>
       
       {/* Live Refresh Toggle */}
       <div className="mb-6 flex justify-center">
@@ -459,7 +545,7 @@ const RaspberryPiInterface = () => {
                   <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-3 dark:bg-amber-950/20 dark:border-amber-800">
                     <Info className="text-amber-500 dark:text-amber-400 h-5 w-5 flex-shrink-0" />
                     <div className="text-sm">
-                      <span className="font-medium">Note:</span> Enter the physical pin number (3-40), not the GPIO number.
+                      <span className="font-medium">Pi 400 Pin Recommendations:</span> Use pins {PI_400_RECOMMENDED_PINS.join(', ')} for best results.
                       <span className="block mt-1">
                         <Button variant="link" className="h-auto p-0 text-xs" asChild>
                           <a 
@@ -476,7 +562,13 @@ const RaspberryPiInterface = () => {
                   </div>
                   
                   {devices.map((device) => (
-                    <div key={device.id} className="border rounded-lg p-4 space-y-3">
+                    <div 
+                      key={device.id} 
+                      className={cn(
+                        "border rounded-lg p-4 space-y-3",
+                        device.pin_problematic && "border-amber-300 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20"
+                      )}
+                    >
                       <div className="flex items-center justify-between">
                         <div>
                           <h3 className="font-medium">{device.device_name}</h3>
@@ -493,6 +585,15 @@ const RaspberryPiInterface = () => {
                           {device.device_status}
                         </div>
                       </div>
+                      
+                      {device.pin_problematic && (
+                        <div className="flex items-start gap-2 p-2 bg-amber-100 rounded-md dark:bg-amber-950/40">
+                          <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                          <p className="text-xs text-amber-700 dark:text-amber-300">
+                            Pin {device.pin} may be reserved on Pi 400. Consider changing to a recommended pin.
+                          </p>
+                        </div>
+                      )}
                       
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
@@ -519,7 +620,12 @@ const RaspberryPiInterface = () => {
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent>
-                                <p>Valid pins: {VALID_PIN_NUMBERS.join(', ')}</p>
+                                <div className="space-y-2 max-w-xs">
+                                  <p className="font-medium">Valid pins: {VALID_PIN_NUMBERS.join(', ')}</p>
+                                  <p className="text-xs text-amber-500">
+                                    Recommended Pi 400 pins: {PI_400_RECOMMENDED_PINS.join(', ')}
+                                  </p>
+                                </div>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
@@ -527,6 +633,29 @@ const RaspberryPiInterface = () => {
                         
                         {pinErrors[device.id] && (
                           <p className="text-xs text-red-500">{pinErrors[device.id]}</p>
+                        )}
+                        
+                        {device.pin && (
+                          <div className="flex gap-2 mt-2">
+                            <Badge 
+                              variant="outline" 
+                              className={cn(
+                                "text-xs", 
+                                isPinRecommendedForPi400(device.pin) && "bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400",
+                                isPinProblematicForPi400(device.pin) && "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400"
+                              )}
+                            >
+                              Pin {device.pin}
+                            </Badge>
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="text-xs h-6 px-2"
+                              onClick={() => testPin(device.pin!)}
+                            >
+                              Test Pin
+                            </Button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -657,44 +786,60 @@ const RaspberryPiInterface = () => {
             </CardContent>
           </Card>
           
-          {/* System Instructions - DIV4 */}
+          {/* Raspberry Pi 400 Information - DIV4 */}
           <Card>
             <CardHeader>
-              <CardTitle>System Information</CardTitle>
+              <CardTitle>Raspberry Pi 400 Information</CardTitle>
               <CardDescription>
-                Instructions and information about the Raspberry Pi interface
+                Special considerations for the Raspberry Pi 400 model
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <h3 className="font-medium">About This Interface</h3>
+                <h3 className="font-medium">About Raspberry Pi 400</h3>
                 <p className="text-sm text-muted-foreground">
-                  This dashboard provides control over your home automation system through your Raspberry Pi.
-                  You can manage devices, view present members, and monitor panic mode status.
+                  The Raspberry Pi 400 is a complete personal computer built into a compact keyboard. 
+                  While it has the same GPIO capabilities as other Raspberry Pi models, some pins may be used 
+                  internally for keyboard and other functions.
                 </p>
               </div>
               
               <div className="space-y-2">
-                <h3 className="font-medium">Pin Number Format</h3>
+                <h3 className="font-medium">Recommended Pins</h3>
                 <p className="text-sm text-muted-foreground">
-                  Use the physical pin numbers (3-40) as labeled on the Raspberry Pi board, not the GPIO numbers.
-                  Valid pin numbers: {VALID_PIN_NUMBERS.join(', ')}
+                  For the most reliable operation with Raspberry Pi 400, use these recommended pins:
                 </p>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {PI_400_RECOMMENDED_PINS.map(pin => (
+                    <Badge key={pin} variant="outline" className="bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400">
+                      {pin}
+                    </Badge>
+                  ))}
+                </div>
               </div>
               
               <div className="space-y-2">
-                <h3 className="font-medium">Live Refresh Mode</h3>
+                <h3 className="font-medium">Potentially Problematic Pins</h3>
                 <p className="text-sm text-muted-foreground">
-                  When Live Refresh is turned on, the dashboard will automatically update every 5 seconds with the latest data from Firebase.
-                  Turn it off when you need to make changes to device pins without interruption.
+                  These pins might be reserved for keyboard or internal functions on the Pi 400:
                 </p>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {PI_400_PROBLEMATIC_PINS.map(pin => (
+                    <Badge key={pin} variant="outline" className="bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
+                      {pin}
+                    </Badge>
+                  ))}
+                </div>
               </div>
               
               <div className="space-y-2">
-                <h3 className="font-medium">Refreshing Data</h3>
+                <h3 className="font-medium">Troubleshooting</h3>
                 <p className="text-sm text-muted-foreground">
-                  Each panel has a refresh button in the top-right corner that allows you to update just that section.
-                  These buttons are disabled when Live Refresh is active.
+                  If you see "EINVAL: invalid argument" errors or "Error setting up GPIO pin" messages, the pin might 
+                  be reserved or unavailable on Pi 400. Try using one of the recommended pins instead.
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Always use <code>sudo npm start</code> when running the server to ensure proper GPIO permissions.
                 </p>
               </div>
             </CardContent>
