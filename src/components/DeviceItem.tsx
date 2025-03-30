@@ -1,7 +1,7 @@
 import { Device, CurrentPrivilegedUser } from "@/lib/types";
 import { useState, useEffect } from "react";
 import { 
-  Lightbulb, Fan, Tv, Lock, Refrigerator, Power, Trash2, MoreHorizontal, AlertTriangle, Users 
+  Lightbulb, Fan, Tv, Lock, Refrigerator, Power, Trash2, MoreHorizontal, AlertTriangle, Users, Pin, Save
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -24,6 +24,16 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { deviceUpdateEvent, DEVICE_UPDATE_EVENT } from "./PanicModeButton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 interface DeviceItemProps {
   device: Device;
@@ -44,6 +54,10 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
   const [privilegedUser, setPrivilegedUser] = useState<string>("");
   const [isAssigned, setIsAssigned] = useState<boolean>(true);
   
+  const [isPinDialogOpen, setIsPinDialogOpen] = useState<boolean>(false);
+  const [newPin, setNewPin] = useState<string>(device.pin || "X");
+  const [isSavingPin, setIsSavingPin] = useState<boolean>(false);
+  
   useEffect(() => {
     setStatus(device.device_status);
     
@@ -52,6 +66,7 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
       if (docSnapshot.exists()) {
         const data = docSnapshot.data();
         setStatus(data.device_status);
+        setNewPin(data.pin || "X");
       }
     });
     
@@ -153,6 +168,36 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
     }
   };
 
+  const updateDevicePin = async () => {
+    if (!isAdmin || isSavingPin) {
+      return;
+    }
+    
+    try {
+      setIsSavingPin(true);
+      
+      if (newPin !== "X" && !/^\d+$/.test(newPin)) {
+        toast.error("Pin must be a number or 'X' for unassigned");
+        return;
+      }
+      
+      const deviceRef = doc(db, "devices", device.deviceId);
+      await updateDoc(deviceRef, {
+        pin: newPin
+      });
+      
+      toast.success(`Pin updated for ${device.device_name}`);
+      setIsPinDialogOpen(false);
+      
+      deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT));
+    } catch (error) {
+      console.error("Error updating device pin:", error);
+      toast.error("Failed to update pin");
+    } finally {
+      setIsSavingPin(false);
+    }
+  };
+
   const getDeviceIcon = () => {
     switch (device.device_category) {
       case "Light":
@@ -197,12 +242,16 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <span>{device.device_category}</span>
               {isAdmin && (
-                <span className={cn(
-                  "text-xs px-1.5 py-0.5 rounded",
-                  device.pin === "X" ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"
-                )}>
+                <button 
+                  onClick={() => setIsPinDialogOpen(true)}
+                  className={cn(
+                    "text-xs px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors",
+                    device.pin === "X" ? "bg-amber-100 text-amber-700 hover:bg-amber-200" : "bg-green-100 text-green-700 hover:bg-green-200"
+                  )}
+                >
+                  <Pin className="w-3 h-3" />
                   {device.pin === "X" ? "No Pin" : `Pin: ${device.pin}`}
-                </span>
+                </button>
               )}
             </div>
           </div>
@@ -246,6 +295,10 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>Device Options</DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setIsPinDialogOpen(true)}>
+                  <Pin className="mr-2 h-4 w-4" />
+                  <span>Edit Pin Number</span>
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => onDeleteDevice(device.deviceId)}>
                   <Trash2 className="mr-2 h-4 w-4" />
                   <span>Delete Device</span>
@@ -255,6 +308,57 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
           )}
         </div>
       </div>
+      
+      <Dialog open={isPinDialogOpen} onOpenChange={setIsPinDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Update Pin Number</DialogTitle>
+            <DialogDescription>
+              Set the Raspberry Pi pin number for this device. Use "X" if the device has no pin assigned.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-3">
+            <div className="space-y-2">
+              <label htmlFor="pin-number" className="text-sm font-medium">
+                Pin Number
+              </label>
+              <Input
+                id="pin-number"
+                value={newPin}
+                onChange={(e) => setNewPin(e.target.value)}
+                placeholder="Enter pin number or X"
+              />
+              <p className="text-xs text-muted-foreground">
+                Valid values: Numbers (1, 2, 3, etc.) or "X" for unassigned
+              </p>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsPinDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={updateDevicePin}
+              disabled={isSavingPin}
+              className="gap-2"
+            >
+              {isSavingPin ? (
+                <>
+                  <span className="animate-spin">⏳</span>
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  <span>Save Pin</span>
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

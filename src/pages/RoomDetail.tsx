@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { db } from "@/lib/firebase";
 import { 
@@ -42,6 +42,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { deviceUpdateEvent, DEVICE_UPDATE_EVENT } from "@/components/PanicModeButton";
 
 const deviceCategories = [
   "Light",
