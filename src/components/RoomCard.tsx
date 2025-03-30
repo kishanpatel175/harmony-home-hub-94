@@ -34,6 +34,7 @@ const RoomCard: React.FC<RoomCardProps> = ({
         where("roomId", "==", room.roomId)
       );
       
+      // Make sure we're getting fresh data from the server 
       const devicesSnapshot = await getDocs(devicesQuery);
       const deviceList = devicesSnapshot.docs.map(doc => ({
         ...doc.data(),

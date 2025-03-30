@@ -194,6 +194,7 @@ const RoomDetail = () => {
       setRefreshKey(prev => prev + 1);
       toast.success("Device added successfully");
       
+      deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT));
     } catch (error) {
       console.error("Error adding device:", error);
       toast.error("Failed to add device");
@@ -207,6 +208,8 @@ const RoomDetail = () => {
       await deleteDoc(doc(db, "devices", deviceId));
       setRefreshKey(prev => prev + 1);
       toast.success("Device deleted successfully");
+      
+      deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT));
     } catch (error) {
       console.error("Error deleting device:", error);
       toast.error("Failed to delete device");
