@@ -2,7 +2,34 @@ const express = require('express');
 const admin = require('firebase-admin');
 const cors = require('cors');
 const path = require('path');
-const Gpio = require('onoff').Gpio;
+let Gpio;
+
+// Try to load the onoff module, but provide a fallback if not available
+try {
+  Gpio = require('onoff').Gpio;
+  console.log('Onoff module loaded successfully');
+} catch (error) {
+  console.warn('Onoff module not available. GPIO functionality will be simulated.');
+  // Create a mock Gpio class for testing on non-Pi hardware
+  Gpio = class MockGpio {
+    constructor(pin, direction) {
+      this.pin = pin;
+      this.direction = direction;
+      this.value = 0;
+      console.log(`[MOCK] GPIO pin ${pin} initialized with direction ${direction}`);
+    }
+    
+    writeSync(value) {
+      this.value = value;
+      console.log(`[MOCK] GPIO pin ${this.pin} set to ${value}`);
+    }
+    
+    unexport() {
+      console.log(`[MOCK] GPIO pin ${this.pin} unexported`);
+    }
+  };
+}
+
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -318,4 +345,5 @@ process.on('SIGINT', () => {
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
   console.log(`Access the dashboard at http://localhost:${port}`);
+  console.log('GPIO control ' + (Gpio.prototype.hasOwnProperty('unexport') ? 'is ENABLED' : 'is SIMULATED'));
 });

@@ -25,6 +25,8 @@ This server runs on a Raspberry Pi and connects to Firebase to control your home
    npm install
    ```
 
+   > **Note**: The `onoff` package for GPIO control is included in the dependencies and should be installed automatically. If you encounter any issues with it, you may need to install it manually with `npm install onoff`.
+
 4. Start the server:
    ```bash
    npm start
@@ -37,20 +39,16 @@ This server runs on a Raspberry Pi and connects to Firebase to control your home
 
 ### GPIO Control
 
-To control actual GPIO pins on your Raspberry Pi, you'll need to:
+The server automatically uses the `onoff` package to control GPIO pins. When running on non-Raspberry Pi hardware (for testing), a simulation mode is activated.
 
-1. Install the `onoff` package:
-   ```bash
-   npm install onoff
-   ```
-
-2. Uncomment and modify the GPIO control code in the `server.js` file to match your hardware setup
+If needed, you can configure specific GPIO pin mappings for your devices through the web interface.
 
 ### Troubleshooting
 
 - If you see connection errors, verify that your `serviceAccountKey.json` is valid
 - Make sure your Raspberry Pi has internet access to connect to Firebase
-- Check that all device pin numbers correspond to valid GPIO pins on your Raspberry Pi model
+- If you encounter issues with GPIO control, ensure you're running as a user with GPIO access permissions (typically the 'pi' user)
+- For GPIO permission issues, you may need to run the server with sudo: `sudo npm start`
 
 ### Automatic Startup
 
