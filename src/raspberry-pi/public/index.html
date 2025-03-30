@@ -70,11 +70,97 @@
       height: 24px;
       animation: spin 1s linear infinite;
     }
+    .live-badge {
+      background-color: #FEF2F2;
+      color: #DC2626;
+      padding: 0.25rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .live-badge.active {
+      background-color: #DC2626;
+      color: white;
+    }
+    .live-dot {
+      height: 8px;
+      width: 8px;
+      border-radius: 50%;
+      background-color: currentColor;
+      display: inline-block;
+    }
+    .live-dot.active {
+      animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.5;
+      }
+    }
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 48px;
+      height: 24px;
+    }
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+      border-radius: 24px;
+    }
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+    input:checked + .toggle-slider {
+      background-color: #3B82F6;
+    }
+    input:checked + .toggle-slider:before {
+      transform: translateX(24px);
+    }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
   <div class="container mx-auto py-8 px-4">
-    <h1 class="text-3xl font-bold mb-8 text-center">Raspberry Pi Home Automation Dashboard</h1>
+    <h1 class="text-3xl font-bold mb-6 text-center">Raspberry Pi Home Automation Dashboard</h1>
+    
+    <!-- Live Refresh Toggle -->
+    <div class="mb-4 flex justify-center">
+      <div class="flex items-center p-3 bg-white rounded-lg shadow-sm border">
+        <span class="mr-3 font-medium">Live Refresh</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="live-refresh-toggle">
+          <span class="toggle-slider"></span>
+        </label>
+        <div id="live-status" class="ml-3 live-badge">
+          <span class="live-dot"></span>
+          <span>Off</span>
+        </div>
+      </div>
+    </div>
     
     <!-- Connection Status -->
     <div id="connection-status" class="mb-8 p-4 rounded-lg border flex items-center gap-3">
@@ -187,6 +273,14 @@
           </div>
           
           <div>
+            <h4 class="font-medium mb-1">Live Refresh Mode</h4>
+            <p class="text-sm text-gray-600">
+              When Live Refresh is turned on, the dashboard will automatically update with real-time data from Firebase.
+              Turn it off when you need to make changes to device pins without interruption.
+            </p>
+          </div>
+          
+          <div>
             <h4 class="font-medium mb-1">Refreshing Data</h4>
             <p class="text-sm text-gray-600">
               Each panel has a refresh button in the top-right corner to update just that section without reloading the page.
@@ -208,6 +302,54 @@
   <script>
     // API base URL - change this to your Raspberry Pi's IP address if accessing from another device
     const API_BASE_URL = 'http://localhost:3000/api';
+    
+    // Live refresh intervals and status
+    let liveRefreshEnabled = false;
+    let liveRefreshIntervals = {
+      devices: null,
+      members: null,
+      panicMode: null
+    };
+    const DEFAULT_REFRESH_RATE = 5000; // 5 seconds
+    
+    // Initialize live refresh toggle
+    const liveRefreshToggle = document.getElementById('live-refresh-toggle');
+    const liveStatus = document.getElementById('live-status');
+    
+    liveRefreshToggle.addEventListener('change', function() {
+      toggleLiveRefresh(this.checked);
+    });
+    
+    // Function to toggle live refresh mode
+    function toggleLiveRefresh(enable) {
+      liveRefreshEnabled = enable;
+      
+      // Update UI
+      if (enable) {
+        liveStatus.className = 'ml-3 live-badge active';
+        liveStatus.innerHTML = '<span class="live-dot active"></span><span>Live</span>';
+        
+        // Start refresh intervals
+        liveRefreshIntervals.devices = setInterval(refreshDevices, DEFAULT_REFRESH_RATE);
+        liveRefreshIntervals.members = setInterval(refreshMembers, DEFAULT_REFRESH_RATE);
+        liveRefreshIntervals.panicMode = setInterval(refreshPanicMode, DEFAULT_REFRESH_RATE);
+        
+        console.log('Live refresh enabled');
+      } else {
+        liveStatus.className = 'ml-3 live-badge';
+        liveStatus.innerHTML = '<span class="live-dot"></span><span>Off</span>';
+        
+        // Clear all intervals
+        Object.keys(liveRefreshIntervals).forEach(key => {
+          if (liveRefreshIntervals[key]) {
+            clearInterval(liveRefreshIntervals[key]);
+            liveRefreshIntervals[key] = null;
+          }
+        });
+        
+        console.log('Live refresh disabled');
+      }
+    }
     
     // Function to check Firebase connection
     async function checkConnection() {
@@ -250,11 +392,19 @@
             <p class="text-sm text-gray-600">Failed to connect to Firebase. Please check your server configuration.</p>
           </div>
         `;
+        
+        // Disable live refresh toggle if connection fails
+        liveRefreshToggle.disabled = true;
       }
     }
     
     // Function to refresh devices
     async function refreshDevices() {
+      // Skip refresh if this was manually triggered and live refresh is already active
+      if (event && event.type === 'click' && liveRefreshEnabled) {
+        return;
+      }
+      
       const refreshBtn = document.querySelector('#devices-card .refresh-btn');
       refreshBtn.classList.add('spinning');
       
@@ -323,6 +473,13 @@
     
     // Function to save pin
     async function savePin(deviceId) {
+      // Disable live refresh temporarily when saving a pin
+      const wasLiveRefreshEnabled = liveRefreshEnabled;
+      if (wasLiveRefreshEnabled) {
+        toggleLiveRefresh(false);
+        liveRefreshToggle.checked = false;
+      }
+      
       const pinInput = document.getElementById(`pin-${deviceId}`);
       const pin = pinInput.value.trim();
       
@@ -360,6 +517,11 @@
     
     // Function to refresh members
     async function refreshMembers() {
+      // Skip refresh if this was manually triggered and live refresh is already active
+      if (event && event.type === 'click' && liveRefreshEnabled) {
+        return;
+      }
+      
       const refreshBtn = document.querySelector('#members-card .refresh-btn');
       refreshBtn.classList.add('spinning');
       
@@ -443,6 +605,11 @@
     
     // Function to refresh panic mode status
     async function refreshPanicMode() {
+      // Skip refresh if this was manually triggered and live refresh is already active
+      if (event && event.type === 'click' && liveRefreshEnabled) {
+        return;
+      }
+      
       const refreshBtn = document.querySelector('#panic-card .refresh-btn');
       refreshBtn.classList.add('spinning');
       
@@ -488,3 +655,4 @@
   </script>
 </body>
 </html>
+

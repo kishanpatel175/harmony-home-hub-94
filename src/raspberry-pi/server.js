@@ -1,159 +1,162 @@
 
 const express = require('express');
-const path = require('path');
 const admin = require('firebase-admin');
-const serviceAccount = require('./serviceAccountKey.json');
 const cors = require('cors');
+const path = require('path');
+const app = express();
+const port = process.env.PORT || 3000;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Initialize Firebase Admin SDK
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
+try {
+  const serviceAccount = require('./serviceAccountKey.json');
+  
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+  });
+  
+  console.log('Firebase Admin SDK initialized successfully');
+} catch (error) {
+  console.error('Error initializing Firebase Admin SDK:', error);
+}
 
 const db = admin.firestore();
-console.log('Firebase initialized successfully');
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Enable CORS
-app.use(cors());
-
-// Serve static files
-app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json());
-
-// API endpoint to check connection
-app.get('/api/check-connection', (req, res) => {
-  res.json({ status: 'connected', message: 'Successfully connected to Firebase' });
-});
-
-// API endpoint to get devices
-app.get('/api/devices', async (req, res) => {
+// API Endpoints
+app.get('/api/check-connection', async (req, res) => {
   try {
-    const devicesSnapshot = await db.collection('devices').get();
-    const devices = [];
-    
-    for (const doc of devicesSnapshot.docs) {
-      const device = { id: doc.id, ...doc.data() };
-      
-      // Get room name if roomId exists
-      if (device.roomId) {
-        const roomDoc = await db.collection('rooms').doc(device.roomId).get();
-        if (roomDoc.exists) {
-          device.room_name = roomDoc.data().room_name;
-        } else {
-          device.room_name = 'Unassigned';
-        }
-      } else {
-        device.room_name = 'Unassigned';
-      }
-      
-      devices.push(device);
-    }
-    
-    res.json(devices);
+    // Test connection to Firebase
+    await db.collection('devices').limit(1).get();
+    res.json({ status: 'connected' });
   } catch (error) {
-    console.error('Error fetching devices:', error);
-    res.status(500).json({ error: 'Failed to fetch devices' });
+    console.error('Firebase connection error:', error);
+    res.status(500).json({ status: 'disconnected', error: error.message });
   }
 });
 
-// API endpoint to update device pin
+app.get('/api/devices', async (req, res) => {
+  try {
+    const devicesRef = db.collection('devices');
+    const snapshot = await devicesRef.get();
+    
+    const devicesPromises = snapshot.docs.map(async (doc) => {
+      const deviceData = doc.data();
+      const deviceId = doc.id;
+      
+      // Get room name if roomId exists
+      let roomName = 'Unassigned';
+      if (deviceData.roomId) {
+        try {
+          const roomDoc = await db.collection('rooms').doc(deviceData.roomId).get();
+          if (roomDoc.exists) {
+            roomName = roomDoc.data().room_name;
+          }
+        } catch (err) {
+          console.error(`Error fetching room for device ${deviceId}:`, err);
+        }
+      }
+      
+      return {
+        ...deviceData,
+        id: deviceId,
+        room_name: roomName
+      };
+    });
+    
+    const devices = await Promise.all(devicesPromises);
+    res.json(devices);
+  } catch (error) {
+    console.error('Error fetching devices:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/devices/:deviceId/update-pin', async (req, res) => {
   try {
     const { deviceId } = req.params;
     const { pin } = req.body;
     
-    if (!pin || !/^\d+$/.test(pin)) {
-      return res.status(400).json({ error: 'Pin must be a valid number' });
+    if (!pin) {
+      return res.status(400).json({ success: false, error: 'Pin is required' });
     }
     
-    await db.collection('devices').doc(deviceId).update({ pin });
-    res.json({ success: true, message: 'Pin updated successfully' });
+    if (!/^\d+$/.test(pin)) {
+      return res.status(400).json({ success: false, error: 'Pin must contain only digits' });
+    }
+    
+    const deviceRef = db.collection('devices').doc(deviceId);
+    await deviceRef.update({ pin });
+    
+    console.log(`Updated pin for device ${deviceId} to ${pin}`);
+    res.json({ success: true });
   } catch (error) {
     console.error('Error updating pin:', error);
-    res.status(500).json({ error: 'Failed to update pin' });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// API endpoint to get present members
 app.get('/api/present-members', async (req, res) => {
   try {
-    const presentSnapshot = await db.collection('present_scan').get();
-    const members = [];
+    // Get present members
+    const presentRef = db.collection('present_scan');
+    const presentSnapshot = await presentRef.get();
     
-    for (const doc of presentSnapshot.docs) {
+    const membersPromises = presentSnapshot.docs.map(async (doc) => {
       const memberId = doc.id;
       const memberDoc = await db.collection('members').doc(memberId).get();
       
       if (memberDoc.exists) {
-        members.push({ id: memberId, ...memberDoc.data() });
+        return {
+          ...memberDoc.data(),
+          id: memberDoc.id
+        };
       }
-    }
+      return null;
+    });
+    
+    const members = (await Promise.all(membersPromises)).filter(member => member !== null);
     
     // Get privileged user
     const privilegedUserDoc = await db.collection('current_most_privileged_user').doc('current').get();
-    const privilegedUser = privilegedUserDoc.exists ? privilegedUserDoc.data() : { current_most_privileged_user_id: '', current_privileged_role: '' };
+    let privilegedUser = {};
+    
+    if (privilegedUserDoc.exists) {
+      privilegedUser = privilegedUserDoc.data();
+    }
     
     res.json({ members, privilegedUser });
   } catch (error) {
-    console.error('Error fetching members:', error);
-    res.status(500).json({ error: 'Failed to fetch members' });
+    console.error('Error fetching present members:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
-// API endpoint to get panic mode status
 app.get('/api/panic-mode', async (req, res) => {
   try {
     const panicModeDoc = await db.collection('panic_mode').doc('current').get();
-    const panicMode = panicModeDoc.exists ? panicModeDoc.data() : { is_panic_mode: false };
     
-    res.json(panicMode);
+    if (panicModeDoc.exists) {
+      res.json(panicModeDoc.data());
+    } else {
+      res.json({ is_panic_mode: false });
+    }
   } catch (error) {
     console.error('Error fetching panic mode:', error);
-    res.status(500).json({ error: 'Failed to fetch panic mode status' });
+    res.status(500).json({ error: error.message });
   }
 });
 
-// Control GPIO pins (placeholder for actual GPIO control)
-app.post('/api/control-device', async (req, res) => {
-  try {
-    const { deviceId, status } = req.body;
-    
-    if (!deviceId || (status !== 'ON' && status !== 'OFF')) {
-      return res.status(400).json({ error: 'Invalid device ID or status' });
-    }
-    
-    // Get the device
-    const deviceDoc = await db.collection('devices').doc(deviceId).get();
-    
-    if (!deviceDoc.exists) {
-      return res.status(404).json({ error: 'Device not found' });
-    }
-    
-    const device = deviceDoc.data();
-    
-    // Here you would add code to control the actual GPIO pin
-    // For example:
-    // const GPIO = require('onoff').Gpio;
-    // const pin = new GPIO(device.pin, 'out');
-    // pin.writeSync(status === 'ON' ? 1 : 0);
-    
-    console.log(`Setting device ${device.device_name} (pin ${device.pin}) to ${status}`);
-    
-    // Update the device status in Firebase
-    await db.collection('devices').doc(deviceId).update({ device_status: status });
-    
-    res.json({ success: true, message: `Device ${deviceId} set to ${status}` });
-  } catch (error) {
-    console.error('Error controlling device:', error);
-    res.status(500).json({ error: 'Failed to control device' });
-  }
+// Default route for serving the web interface
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // Start the server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Access the Raspberry Pi interface at http://localhost:${PORT}`);
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
+  console.log(`Access the dashboard at http://localhost:${port}`);
 });
