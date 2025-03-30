@@ -37,9 +37,18 @@ This server runs on a Raspberry Pi and connects to Firebase to control your home
    - Go to `http://<raspberry-pi-ip-address>:3000`
    - For example: `http://192.168.1.100:3000` or `http://localhost:3000` if accessing from the Pi itself
 
-### GPIO Control
+### GPIO Control and Status Monitoring
 
-The server automatically uses the `onoff` package to control GPIO pins. When running on non-Raspberry Pi hardware (for testing), a simulation mode is activated.
+The server automatically uses the `onoff` package to control GPIO pins based on device status changes in Firebase. When a device status changes, the server will:
+
+1. Convert the physical pin number to the corresponding GPIO number
+2. Update the GPIO pin's state (HIGH for ON, LOW for OFF)
+3. Log the change in the console for validation
+
+The server displays real-time status updates in the console:
+- When a device status changes, detailed logs show the pin being updated
+- Every 30 seconds, a summary of all active pins and their current states is printed
+- During panic mode, all pin state changes are logged
 
 #### Raspberry Pi Pin Mapping
 
@@ -84,12 +93,35 @@ Here's the mapping between physical pins and GPIO numbers for reference:
 
 You can configure specific GPIO pin mappings for your devices through the web interface. Only enter pin numbers from the list above.
 
+### Validating Pin Control
+
+To verify that your GPIO pins are working correctly:
+
+1. Watch the console output for log messages like:
+   ```
+   [PIN CHANGE] Physical pin 11 (GPIO 17) set to 1 (ON)
+   ```
+
+2. Every 30 seconds, check the pin status summary that looks like:
+   ```
+   ----- CURRENT PIN STATUS -----
+   Physical Pin 11 (GPIO 17): ON (1)
+   Physical Pin 13 (GPIO 27): OFF (0)
+   -----------------------------
+   ```
+
+3. Use a multimeter or LED connected to the appropriate GPIO pins to verify the voltage changes from 0V (OFF) to 3.3V (ON)
+
+4. If you change a device status in the web interface, check that the corresponding log appears showing the pin state change
+
 ### Troubleshooting
 
 - If you see connection errors, verify that your `serviceAccountKey.json` is valid
 - Make sure your Raspberry Pi has internet access to connect to Firebase
 - If you encounter issues with GPIO control, ensure you're running as a user with GPIO access permissions (typically the 'pi' user)
 - For GPIO permission issues, you may need to run the server with sudo: `sudo npm start`
+- If you see "Error setting up GPIO pin" messages, check that the physical pin number is valid and that you have permission to access GPIO
+- For deeper debugging, set the environment variable `DEBUG=1` when running: `DEBUG=1 npm start`
 
 ### Automatic Startup
 
@@ -128,4 +160,3 @@ To make the server start automatically when your Raspberry Pi boots:
    ```bash
    sudo systemctl status home-automation.service
    ```
-

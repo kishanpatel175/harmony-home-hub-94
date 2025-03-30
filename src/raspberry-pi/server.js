@@ -111,23 +111,23 @@ const setupGpioPin = (pinNumber, initialState) => {
       return false;
     }
     
-    console.log(`Setting up physical pin ${pinNumber} (GPIO ${gpioNumber}) with state: ${initialState}`);
-    
     // Clean up if pin was already initialized
     if (activePins[pinNumber]) {
       activePins[pinNumber].unexport();
+      console.log(`Unexported existing pin ${pinNumber} (GPIO ${gpioNumber})`);
     }
     
     // Create new GPIO pin with OUTPUT direction
     const pin = new Gpio(gpioNumber, 'out');
     
     // Set initial state (1 for ON, 0 for OFF)
-    pin.writeSync(initialState === 'ON' ? 1 : 0);
+    const pinValue = initialState === 'ON' ? 1 : 0;
+    pin.writeSync(pinValue);
     
     // Store pin in active pins map
     activePins[pinNumber] = pin;
     
-    console.log(`GPIO pin ${gpioNumber} set up with state: ${initialState}`);
+    console.log(`[PIN CHANGE] Physical pin ${pinNumber} (GPIO ${gpioNumber}) set to ${pinValue} (${initialState})`);
     return true;
   } catch (error) {
     console.error(`Error setting up GPIO pin ${pinNumber}:`, error);
@@ -142,9 +142,11 @@ const setupDeviceListeners = async () => {
     const devicesRef = db.collection('devices');
     const snapshot = await devicesRef.get();
     
+    console.log("Initial device setup:");
     snapshot.forEach(doc => {
       const device = doc.data();
       if (device.pin) {
+        console.log(`Setting up device "${device.device_name}" with physical pin ${device.pin}, status: ${device.device_status}`);
         setupGpioPin(device.pin, device.device_status);
       }
     });
@@ -155,6 +157,7 @@ const setupDeviceListeners = async () => {
         const device = change.doc.data();
         if (device.pin) {
           if (change.type === 'modified') {
+            console.log(`Device "${device.device_name}" status changed to ${device.device_status}, updating physical pin ${device.pin}`);
             setupGpioPin(device.pin, device.device_status);
           }
         }
@@ -370,6 +373,7 @@ db.collection('panic_mode').doc('current')
           const device = doc.data();
           if (device.pin && activePins[device.pin]) {
             activePins[device.pin].writeSync(0); // Turn off
+            console.log(`[PANIC MODE] Set physical pin ${device.pin} (for device "${device.device_name}") to OFF (0)`);
           }
         });
         
@@ -404,9 +408,29 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
+// Print out active pins status periodically
+const printPinStatus = () => {
+  if (Object.keys(activePins).length === 0) {
+    console.log('No active GPIO pins currently configured');
+    return;
+  }
+  
+  console.log('\n----- CURRENT PIN STATUS -----');
+  Object.entries(activePins).forEach(([physicalPin, pin]) => {
+    const gpioNumber = PHYSICAL_TO_GPIO[physicalPin];
+    const status = pin.value === 1 ? 'ON' : 'OFF';
+    console.log(`Physical Pin ${physicalPin} (GPIO ${gpioNumber}): ${status} (${pin.value})`);
+  });
+  console.log('-----------------------------\n');
+};
+
+// Print pin status every 30 seconds
+setInterval(printPinStatus, 30000);
+
 // Start the server
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
   console.log(`Access the dashboard at http://localhost:${port}`);
   console.log('GPIO control ' + (Gpio.prototype.hasOwnProperty('unexport') ? 'is ENABLED' : 'is SIMULATED'));
+  console.log('Physical-to-GPIO mapping is active. Using physical pin numbers in the configuration.');
 });
