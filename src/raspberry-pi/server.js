@@ -460,7 +460,7 @@ app.post('/api/devices/:deviceId/update-status', async (req, res) => {
     console.error('Error updating device status:', error);
     res.status(500).json({ success: false, error: error.message });
   }
-};
+});
 
 app.get('/api/present-members', async (req, res) => {
   try {
