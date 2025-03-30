@@ -1,4 +1,3 @@
-
 import { Device, CurrentPrivilegedUser } from "@/lib/types";
 import { useState, useEffect } from "react";
 import { 
@@ -46,10 +45,8 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
   const [isAssigned, setIsAssigned] = useState<boolean>(true);
   
   useEffect(() => {
-    // Set initial status from device prop
     setStatus(device.device_status);
     
-    // Listen for device status changes
     const deviceRef = doc(db, "devices", device.deviceId);
     const unsubscribeDevice = onSnapshot(deviceRef, (docSnapshot) => {
       if (docSnapshot.exists()) {
@@ -58,7 +55,6 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
       }
     });
     
-    // Listen for panic mode changes
     const panicModeRef = doc(db, "panic_mode", "current");
     const unsubscribePanic = onSnapshot(panicModeRef, (docSnapshot) => {
       if (docSnapshot.exists()) {
@@ -66,7 +62,6 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
       }
     });
     
-    // Listen to current privileged user
     const privilegedUserRef = doc(db, "current_most_privileged_user", "current");
     const unsubscribePrivileged = onSnapshot(privilegedUserRef, async (docSnapshot) => {
       if (docSnapshot.exists()) {
@@ -74,13 +69,10 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
         const privilegedUserId = data.current_most_privileged_user_id || "";
         setPrivilegedUser(privilegedUserId);
         
-        // Check if device is assigned to privileged user
         if (privilegedUserId) {
-          // Fix: properly check if the device is assigned to the privileged user
           const isDeviceAssigned = device.assignedMembers.includes(privilegedUserId);
           setIsAssigned(isDeviceAssigned);
           
-          // Auto turn off unassigned devices when privileged user changes
           if (!isDeviceAssigned && status === "ON" && !isAdmin) {
             try {
               const deviceRef = doc(db, "devices", device.deviceId);
@@ -93,15 +85,12 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
             }
           }
         } else {
-          // If no privileged user, allow control of all devices (default behavior)
           setIsAssigned(true);
         }
       }
     });
     
-    // Listen for device update events
     const handleDeviceUpdate = () => {
-      // Refresh device status
       const refreshDeviceStatus = async () => {
         try {
           const deviceDoc = await getDoc(doc(db, "devices", device.deviceId));
@@ -127,12 +116,10 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
   }, [device, isAdmin]);
 
   const toggleDevice = async () => {
-    // Check if control is allowed
     if (isUpdating || !canControl || panicMode) {
       return;
     }
     
-    // If there's a privileged user and device is not assigned, don't allow toggling for non-admin users
     if (privilegedUser && !isAssigned && !isAdmin) {
       toast.error("Device not assigned to the current privileged user");
       return;
@@ -141,7 +128,6 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
     try {
       setIsUpdating(true);
       
-      // Get fresh status from Firestore to ensure we're working with latest data
       const deviceDoc = await getDoc(doc(db, "devices", device.deviceId));
       if (!deviceDoc.exists()) {
         toast.error("Device not found");
@@ -156,10 +142,8 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
         device_status: newStatus
       });
       
-      // Don't set status here, let the onSnapshot handler update it
       toast.success(`${device.device_name} turned ${newStatus}`);
       
-      // Notify other components about device status change
       deviceUpdateEvent.dispatchEvent(new CustomEvent(DEVICE_UPDATE_EVENT));
     } catch (error) {
       console.error("Error toggling device:", error);
@@ -186,7 +170,6 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
     }
   };
 
-  // Determine control restrictions
   const isControlDisabled = !canControl || panicMode || isUpdating || (!isAdmin && privilegedUser && !isAssigned);
   const controlRestrictionReason = !canControl ? 
     "No members present in home" : 
@@ -211,7 +194,17 @@ const DeviceItem: React.FC<DeviceItemProps> = ({
           
           <div>
             <h3 className="font-medium">{device.device_name}</h3>
-            <p className="text-sm text-muted-foreground">{device.device_category}</p>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>{device.device_category}</span>
+              {isAdmin && (
+                <span className={cn(
+                  "text-xs px-1.5 py-0.5 rounded",
+                  device.pin === "X" ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"
+                )}>
+                  {device.pin === "X" ? "No Pin" : `Pin: ${device.pin}`}
+                </span>
+              )}
+            </div>
           </div>
         </div>
         

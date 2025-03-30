@@ -61,25 +61,19 @@ const RoomDetail = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const { isAdmin } = useAuth();
   
-  // New device form state
   const [isAddingDevice, setIsAddingDevice] = useState(false);
   const [newDeviceName, setNewDeviceName] = useState("");
   const [newDeviceCategory, setNewDeviceCategory] = useState(deviceCategories[0]);
   
-  // Delete room state
   const [isDeletingRoom, setIsDeletingRoom] = useState(false);
   
-  // Privileged user state
   const [privilegedUserId, setPrivilegedUserId] = useState<string | null>(null);
   const [canControlDevices, setCanControlDevices] = useState(false);
   
-  // Panic mode state
   const [panicMode, setPanicMode] = useState(false);
   
-  // Present members state
   const [hasPresentMembers, setHasPresentMembers] = useState(false);
   
-  // Fetch room data
   useEffect(() => {
     const fetchRoom = async () => {
       if (!roomId) return;
@@ -106,7 +100,6 @@ const RoomDetail = () => {
     fetchRoom();
   }, [roomId, navigate]);
   
-  // Listen for privileged user changes and present members
   useEffect(() => {
     const privilegedUserRef = doc(db, "current_most_privileged_user", "current");
     
@@ -115,22 +108,17 @@ const RoomDetail = () => {
         const data = doc.data() as CurrentPrivilegedUser;
         setPrivilegedUserId(data.current_most_privileged_user_id);
         
-        // Only allow control if admin or if there is a privileged user (someone is home)
         if (isAdmin) {
-          // Admin can always control devices regardless of presence
           setCanControlDevices(true);
         } else {
-          // Normal users can only control if someone is home (privileged user exists)
           setCanControlDevices(!!data.current_most_privileged_user_id);
         }
       } else {
         setPrivilegedUserId(null);
-        // Only admin can control when no one is home
         setCanControlDevices(isAdmin);
       }
     });
     
-    // Listen for panic mode changes
     const panicModeRef = doc(db, "panic_mode", "current");
     
     const unsubscribePanic = onSnapshot(panicModeRef, (doc) => {
@@ -139,13 +127,11 @@ const RoomDetail = () => {
       }
     });
     
-    // Listen for present members
     const presentMembersRef = collection(db, "present_scan");
     const unsubscribePresentMembers = onSnapshot(presentMembersRef, (snapshot) => {
       const hasMembers = !snapshot.empty;
       setHasPresentMembers(hasMembers);
       
-      // If not admin, control ability depends on members being present
       if (!isAdmin) {
         setCanControlDevices(hasMembers);
       }
@@ -158,7 +144,6 @@ const RoomDetail = () => {
     };
   }, [isAdmin]);
   
-  // Fetch devices in this room
   useEffect(() => {
     const fetchDevices = async () => {
       if (!roomId) return;
@@ -200,7 +185,8 @@ const RoomDetail = () => {
         device_status: "OFF",
         roomId: roomId,
         assignedMembers: [],
-        device_createdAt: serverTimestamp()
+        device_createdAt: serverTimestamp(),
+        pin: "X"
       });
       
       setNewDeviceName("");
@@ -233,7 +219,6 @@ const RoomDetail = () => {
     try {
       setIsDeletingRoom(true);
       
-      // First unlink all devices from this room
       const devicesQuery = query(
         collection(db, "devices"),
         where("roomId", "==", roomId)
@@ -247,7 +232,6 @@ const RoomDetail = () => {
       
       await Promise.all(updatePromises);
       
-      // Then delete the room
       await deleteDoc(doc(db, "rooms", roomId));
       
       toast.success("Room deleted successfully");
@@ -509,5 +493,3 @@ const RoomDetail = () => {
 };
 
 export default RoomDetail;
-
-

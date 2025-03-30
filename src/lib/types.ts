@@ -13,6 +13,7 @@ export interface Device {
   roomId: string | null;
   assignedMembers: string[];
   device_createdAt: any; // Firebase Timestamp
+  pin: string; // New field for Raspberry Pi's physical pin number
 }
 
 export interface Member {
