@@ -7,7 +7,7 @@ This server runs on a Raspberry Pi and connects to Firebase to control your home
 
 ### Prerequisites
 
-1. Raspberry Pi with Raspbian OS installed
+1. Raspberry Pi (including Pi 400) with Raspbian OS installed
 2. Node.js (v14 or newer) installed on your Raspberry Pi
 3. Firebase Admin SDK service account key
 
@@ -32,12 +32,21 @@ This server runs on a Raspberry Pi and connects to Firebase to control your home
    sudo npm start
    ```
 
-   > **Important**: Running with `sudo` is recommended for GPIO access. If you don't use sudo, you might see permissions errors when accessing GPIO pins.
+   > **Important**: Running with `sudo` is required for GPIO access. If you don't use sudo, the system will fall back to simulated GPIO mode.
 
 5. Access the web interface:
    - Open a browser on your Raspberry Pi or any device on the same network
    - Go to `http://<raspberry-pi-ip-address>:3000`
    - For example: `http://192.168.1.100:3000` or `http://localhost:3000` if accessing from the Pi itself
+
+### Raspberry Pi 400 Notes
+
+The Raspberry Pi 400 has the same GPIO pin layout as other Raspberry Pi models, but since it's built into a keyboard, physical access to the GPIO pins is different:
+
+- The GPIO pins are accessible through the 40-pin header at the back of the Pi 400
+- All pin numbers in the interface refer to the physical pin positions on this 40-pin header
+- The system will automatically convert between physical pin numbers and GPIO numbers
+- Some pins might show EINVAL errors if they're reserved for special functions on the Pi 400
 
 ### GPIO Control and Status Monitoring
 
@@ -107,10 +116,11 @@ To verify that your GPIO pins are working correctly:
 2. Every 30 seconds, check the pin status summary that looks like:
    ```
    ----- CURRENT PIN STATUS -----
-   Physical Pin 11 (GPIO 17): ON (1)
-   Physical Pin 13 (GPIO 27): OFF (0)
+   Physical Pin 11 (GPIO 17): ON (1) [PHYSICAL]
+   Physical Pin 13 (GPIO 27): OFF (0) [SIMULATED]
    -----------------------------
    ```
+   Note: [PHYSICAL] means the pin is being controlled directly, while [SIMULATED] means the pin is in mock mode.
 
 3. Use a multimeter or LED connected to the appropriate GPIO pins to verify the voltage changes from 0V (OFF) to 3.3V (ON)
 
@@ -129,7 +139,15 @@ The most common issue is permissions for GPIO access. If you see errors like `EI
    sudo npm start
    ```
 
-2. **Change GPIO permissions** (alternative solution):
+2. **Check if the pin is available on your Raspberry Pi model**:
+   - Some pins on the Raspberry Pi 400 might be reserved for keyboard or internal functions
+   - Try using different pins (e.g., 11, 13, 15, 16) that are known to work well
+
+3. **Check for pin conflicts**:
+   - Some pins might be used by other services or have specific functions
+   - Use `gpio readall` command to see current pin states (install wiringpi if needed)
+
+4. **Change GPIO permissions** (alternative solution):
    ```bash
    sudo chmod -R 777 /sys/class/gpio
    ```
@@ -138,7 +156,7 @@ The most common issue is permissions for GPIO access. If you see errors like `EI
    npm start
    ```
 
-3. **Add your user to the gpio group** (permanent solution):
+5. **Add your user to the gpio group** (permanent solution):
    ```bash
    sudo usermod -a -G gpio $USER
    ```
@@ -150,7 +168,7 @@ The most common issue is permissions for GPIO access. If you see errors like `EI
 - Make sure your Raspberry Pi has internet access to connect to Firebase
 - If you see "Error setting up GPIO pin" messages but the server continues running, the app will use simulated GPIO (mock mode)
 - For deeper debugging, set the environment variable `DEBUG=1` when running: `DEBUG=1 sudo npm start`
-- If specific pins are not working, verify they are not being used by other processes
+- If specific pins are not working, check if they might be reserved on the Pi 400 by trying different pins
 
 ### Automatic Startup
 
@@ -179,7 +197,7 @@ To make the server start automatically when your Raspberry Pi boots:
    WantedBy=multi-user.target
    ```
 
-   > **Note**: We're setting User=root here to ensure GPIO access permissions. If you prefer not to run as root, you'll need to follow the GPIO permission steps in the troubleshooting section.
+   > **Note**: We're setting User=root here to ensure GPIO access permissions.
 
 3. Enable and start the service:
    ```bash
@@ -202,3 +220,4 @@ The server includes a test endpoint that allows you to temporarily activate any 
 4. Check the server console for confirmation that the test was executed
 
 This test function is useful for verifying hardware connections without changing device status in Firebase.
+

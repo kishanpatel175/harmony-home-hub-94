@@ -4,14 +4,30 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 let Gpio;
+let isRealGpio = false;
 
 // Try to load the onoff module, but provide a fallback if not available
 try {
   Gpio = require('onoff').Gpio;
   console.log('Onoff module loaded successfully');
+  
+  // Check if we're on a real Raspberry Pi with GPIO access
+  try {
+    // Try to access the GPIO directory
+    fs.accessSync('/sys/class/gpio', fs.constants.R_OK | fs.constants.W_OK);
+    isRealGpio = true;
+    console.log('GPIO access verified - running in REAL GPIO mode');
+  } catch (error) {
+    console.warn('GPIO directory not accessible:', error.message);
+    console.warn('Running in SIMULATED GPIO mode');
+  }
 } catch (error) {
   console.warn('Onoff module not available. GPIO functionality will be simulated.');
-  // Create a mock Gpio class for testing on non-Pi hardware
+  isRealGpio = false;
+}
+
+// Create a mock Gpio class if real GPIO is not available or accessible
+if (!isRealGpio) {
   Gpio = class MockGpio {
     constructor(pin, direction) {
       this.pin = pin;
@@ -38,6 +54,7 @@ const activePins = {};
 
 // Mapping between physical pin numbers and GPIO numbers
 // Key: physical pin number, Value: BCM GPIO number
+// This is standard for all Raspberry Pi models including Pi 400
 const PHYSICAL_TO_GPIO = {
   // Physical : GPIO
   '3': 2,
@@ -92,6 +109,8 @@ const db = admin.firestore();
 
 // Check if we have permission to access GPIO
 const checkGpioPermissions = () => {
+  if (!isRealGpio) return false;
+  
   try {
     // Check if /sys/class/gpio exists and is accessible
     const gpioPath = '/sys/class/gpio';
@@ -115,7 +134,7 @@ const checkGpioPermissions = () => {
 };
 
 const hasGpioPermission = checkGpioPermissions();
-if (!hasGpioPermission) {
+if (!hasGpioPermission && isRealGpio) {
   console.warn('----------------------------');
   console.warn('WARNING: GPIO access requires higher permissions.');
   console.warn('Try running the server with sudo: sudo npm start');
@@ -132,6 +151,38 @@ const physicalToGPIO = (physicalPin) => {
   return gpioNumber;
 };
 
+// Helper function to safely set GPIO pin state with better error handling
+const setPinState = (pin, value) => {
+  if (!pin) return false;
+  
+  try {
+    pin.writeSync(value);
+    return true;
+  } catch (error) {
+    console.error(`Error writing to GPIO pin ${pin.pin}:`, error.message);
+    
+    // If we get EINVAL or permission error, the pin might be in use or inaccessible
+    if (error.code === 'EINVAL' || error.code === 'EACCES' || error.message.includes('permission')) {
+      console.error(`Pin appears to be inaccessible. This can happen if:`);
+      console.error(`1. The pin is being used by another process`);
+      console.error(`2. You don't have permission to access GPIO (run with sudo)`);
+      console.error(`3. The pin is not configured as GPIO on your Pi model`);
+      console.error(`Trying to recover by unexport/re-export...`);
+      
+      // Try to recover by unexporting
+      try {
+        pin.unexport();
+        console.log(`Pin unexported successfully`);
+      } catch (unexportError) {
+        // If we can't unexport, it's probably a lost cause
+        console.error(`Failed to unexport pin:`, unexportError.message);
+      }
+    }
+    
+    return false;
+  }
+};
+
 // Helper function to setup GPIO pins with improved error handling
 const setupGpioPin = (pinNumber, initialState) => {
   try {
@@ -145,20 +196,27 @@ const setupGpioPin = (pinNumber, initialState) => {
     
     // Clean up if pin was already initialized
     if (activePins[pinNumber]) {
-      activePins[pinNumber].unexport();
-      console.log(`Unexported existing pin ${pinNumber} (GPIO ${gpioNumber})`);
+      try {
+        activePins[pinNumber].unexport();
+        console.log(`Unexported existing pin ${pinNumber} (GPIO ${gpioNumber})`);
+      } catch (error) {
+        console.warn(`Failed to unexport pin ${pinNumber}: ${error.message}`);
+      }
     }
     
     // Create new GPIO pin with OUTPUT direction
     let pin;
     try {
       pin = new Gpio(gpioNumber, 'out');
+      console.log(`Successfully initialized GPIO pin ${gpioNumber} (physical pin ${pinNumber})`);
     } catch (error) {
       console.error(`Error creating GPIO instance for pin ${pinNumber} (GPIO ${gpioNumber}):`, error.message);
       
       if (error.code === 'EACCES' || error.message.includes('permission')) {
         console.error(`Permission denied for GPIO ${gpioNumber}. Run with sudo or check GPIO permissions.`);
         console.error(`Try running: sudo chmod -R 777 /sys/class/gpio`);
+      } else if (error.code === 'EINVAL') {
+        console.error(`Invalid argument for GPIO ${gpioNumber}. This pin might not be available on Raspberry Pi 400.`);
       }
       
       // Use a mock pin if we can't initialize the real one
@@ -168,15 +226,14 @@ const setupGpioPin = (pinNumber, initialState) => {
     
     // Set initial state (1 for ON, 0 for OFF)
     const pinValue = initialState === 'ON' ? 1 : 0;
+    const success = setPinState(pin, pinValue);
     
-    try {
-      pin.writeSync(pinValue);
+    if (success) {
       console.log(`[PIN CHANGE] Physical pin ${pinNumber} (GPIO ${gpioNumber}) set to ${pinValue} (${initialState})`);
-    } catch (error) {
-      console.error(`Error writing to GPIO pin ${pinNumber} (GPIO ${gpioNumber}):`, error.message);
-      if (error.code === 'EACCES' || error.message.includes('permission')) {
-        console.error(`Permission denied writing to GPIO ${gpioNumber}. Run with sudo.`);
-      }
+    } else {
+      console.warn(`Failed to set physical pin ${pinNumber} (GPIO ${gpioNumber}) to ${pinValue} (${initialState})`);
+      console.warn(`Continuing with simulated pin state instead`);
+      pin.value = pinValue; // Set the value property directly for our records
     }
     
     // Store pin in active pins map - even if it's a mock
@@ -481,7 +538,7 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-// Print out active pins status periodically
+// Print out active pins status periodically with more detail
 const printPinStatus = () => {
   if (Object.keys(activePins).length === 0) {
     console.log('No active GPIO pins currently configured');
@@ -492,7 +549,8 @@ const printPinStatus = () => {
   Object.entries(activePins).forEach(([physicalPin, pin]) => {
     const gpioNumber = PHYSICAL_TO_GPIO[physicalPin];
     const status = pin.value === 1 ? 'ON' : 'OFF';
-    console.log(`Physical Pin ${physicalPin} (GPIO ${gpioNumber}): ${status} (${pin.value})`);
+    const pinType = pin instanceof MockGpio ? 'SIMULATED' : 'PHYSICAL';
+    console.log(`Physical Pin ${physicalPin} (GPIO ${gpioNumber}): ${status} (${pin.value}) [${pinType}]`);
   });
   console.log('-----------------------------\n');
 };
@@ -504,8 +562,13 @@ setInterval(printPinStatus, 30000);
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
   console.log(`Access the dashboard at http://localhost:${port}`);
-  console.log('GPIO control ' + (Gpio.prototype.hasOwnProperty('unexport') ? 'is ENABLED' : 'is SIMULATED'));
+  console.log('GPIO control ' + (isRealGpio ? 'is ENABLED' : 'is SIMULATED'));
   console.log('Physical-to-GPIO mapping is active. Using physical pin numbers in the configuration.');
+  console.log(`Running on ${hasGpioPermission ? 'REAL' : 'SIMULATED'} GPIO mode.`);
+  
+  if (!hasGpioPermission && isRealGpio) {
+    console.log('TIP: Run with sudo to enable real GPIO control: sudo npm start');
+  }
 });
 
 app.post('/api/test-pin', async (req, res) => {
@@ -546,4 +609,14 @@ app.post('/api/test-pin', async (req, res) => {
     console.error('Error testing pin:', error);
     res.status(500).json({ success: false, error: error.message });
   }
+});
+
+// Helper function to check if a specific pin is valid on Raspberry Pi 400
+app.get('/api/valid-pins', (req, res) => {
+  const validPins = Object.keys(PHYSICAL_TO_GPIO);
+  res.json({
+    validPins,
+    totalPins: validPins.length,
+    gpioMode: isRealGpio && hasGpioPermission ? 'REAL' : 'SIMULATED'
+  });
 });
