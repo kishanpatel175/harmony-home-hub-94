@@ -6,9 +6,9 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const Navigation = () => {
   const location = useLocation();
-  const { user, isAdmin } = useAuth();
+  const { currentUser, isAdmin } = useAuth();
 
-  if (!user) return null;
+  if (!currentUser) return null;
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-background border-t z-50">
